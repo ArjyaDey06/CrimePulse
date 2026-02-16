@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import mapboxgl from 'mapbox-gl'
 import axios from 'axios'
+import { Globe, Target, Layers, AlertTriangle, MapPin, Calendar, FileText, ExternalLink, Activity, TrendingUp, Shield } from 'lucide-react'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import './App.css'
 
@@ -13,7 +14,9 @@ function App() {
   const [crimeData, setCrimeData] = useState([])
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState(null)
-  const [mapStyle, setMapStyle] = useState('streets')
+  const [mapStyle, setMapStyle] = useState('dark')
+  const [lastFetchTime, setLastFetchTime] = useState(new Date().toISOString())
+  const markersRef = useRef([])
 
   const mapStyles = {
     satellite: 'mapbox://styles/mapbox/satellite-v9',
@@ -29,11 +32,58 @@ function App() {
     if (map.current) {
       map.current.setStyle(mapStyles[newStyle])
     }
-    
-    // Update button icon
-    const button = document.getElementById('style-toggle-btn')
-    if (button) {
-      button.innerHTML = newStyle === 'satellite' ? '🛰️' : '🏙️'
+  }
+
+  const fetchNewCrimeData = async () => {
+    try {
+      const response = await axios.get(`http://localhost:5000/api/crime-data/new?since=${lastFetchTime}`)
+      
+      if (response.data.success && response.data.data.length > 0) {
+        const newCrimes = response.data.data
+        console.log(`🆕 Found ${newCrimes.length} new crime(s)`)
+        
+        // Add new crimes to existing data
+        setCrimeData(prev => [...newCrimes, ...prev])
+        
+        // Update stats
+        const statsResponse = await axios.get('http://localhost:5000/api/stats')
+        setStats(statsResponse.data)
+        
+        // Update map source if map is loaded
+        if (map.current && map.current.getSource('crimes')) {
+          const updatedData = [...newCrimes, ...crimeData]
+          map.current.getSource('crimes').setData({
+            type: 'FeatureCollection',
+            features: updatedData.map(crime => ({
+              type: 'Feature',
+              geometry: {
+                type: 'Point',
+                coordinates: [crime.longitude, crime.latitude]
+              },
+              properties: {
+                id: crime.fir_number,
+                crime_type: crime.crime_type,
+                severity: crime.severity_level,
+                date: crime.incident_date,
+                title: crime.title,
+                description: crime.description,
+                image_url: crime.image_url,
+                location: crime.location,
+                source: crime.source,
+                news_url: crime.news_url,
+                weight: crime.severity_level === 'Critical' ? 4 : 
+                       crime.severity_level === 'High' ? 3 : 
+                       crime.severity_level === 'Medium' ? 2 : 1
+              }
+            }))
+          })
+        }
+        
+        // Update last fetch time
+        setLastFetchTime(response.data.timestamp)
+      }
+    } catch (error) {
+      console.error('Error fetching new data:', error)
     }
   }
 
@@ -57,6 +107,15 @@ function App() {
 
     fetchData()
   }, [])
+
+  // Poll for new data every 60 seconds
+  useEffect(() => {
+    const pollInterval = setInterval(() => {
+      fetchNewCrimeData()
+    }, 60000) // 60 seconds
+
+    return () => clearInterval(pollInterval)
+  }, [lastFetchTime, crimeData])
 
   useEffect(() => {
     if (!mapContainer.current || crimeData.length === 0) return
@@ -114,16 +173,10 @@ function App() {
         this._container = document.createElement('div')
         this._container.className = 'mapboxgl-ctrl mapboxgl-ctrl-group'
         this._container.innerHTML = `
-          <button style="
-            background: white;
-            border: none;
-            border-radius: 4px;
-            padding: 8px;
-            cursor: pointer;
-            font-size: 12px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-          " title="Reset to Globe View">
-            🌍
+          <button class="control-button" title="Reset to Globe View">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>
+            </svg>
           </button>
         `
         this._container.addEventListener('click', () => {
@@ -151,16 +204,10 @@ function App() {
         this._container = document.createElement('div')
         this._container.className = 'mapboxgl-ctrl mapboxgl-ctrl-group'
         this._container.innerHTML = `
-          <button style="
-            background: white;
-            border: none;
-            border-radius: 4px;
-            padding: 8px;
-            cursor: pointer;
-            font-size: 12px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-          " title="Focus on Mumbai">
-            🎯
+          <button class="control-button" title="Focus on Mumbai">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+            </svg>
           </button>
         `
         this._container.addEventListener('click', () => {
@@ -188,21 +235,10 @@ function App() {
         this._container = document.createElement('div')
         this._container.className = 'mapboxgl-ctrl mapboxgl-ctrl-group'
         this._container.innerHTML = `
-          <button id="style-toggle-btn" style="
-            background: white;
-            border: none;
-            border-radius: 4px;
-            padding: 8px;
-            cursor: pointer;
-            font-size: 12px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          " title="Toggle Satellite/Street View">
-            🛰️
+          <button id="style-toggle-btn" class="control-button" title="Toggle Satellite/Street View">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+            </svg>
           </button>
         `
         return this._container
@@ -221,9 +257,9 @@ function App() {
     map.current.on('style.load', () => {
       map.current.setFog({
         'horizon-blend': 0.1,
-        'color': 'white',
+        'color': 'grey',
         'high-color': '#245cdf',
-        'space-color': '#000000',
+        'space-color': '#000',
         'star-intensity': 0.15
       })
     })
@@ -570,36 +606,40 @@ function App() {
           />
         ` : ''}
         
-        <h3 style="margin: 0 0 10px 0; font-size: 16px; color: #333; line-height: 1.3;">
+        <h3 style="margin: 0 0 12px 0; font-size: 16px; color: #ffffff; line-height: 1.4; font-weight: 600;">
           ${properties.title || 'Crime Incident'}
         </h3>
         
-        <div style="margin-bottom: 8px; padding: 8px; background: #f5f5f5; border-radius: 6px;">
-          <p style="margin: 4px 0; font-size: 13px;">
-            <strong>🚨 Crime Type:</strong> <span style="color: #d32f2f;">${properties.crime_type || 'N/A'}</span>
+        <div style="margin-bottom: 10px; padding: 12px; background: rgba(255, 255, 255, 0.05); border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);">
+          <p style="margin: 6px 0; font-size: 13px; color: #d1d5db; display: flex; justify-content: space-between;">
+            <strong style="color: #9ca3af;">Crime Type</strong>
+            <span style="color: #f87171; font-weight: 500;">${properties.crime_type || 'N/A'}</span>
           </p>
-          <p style="margin: 4px 0; font-size: 13px;">
-            <strong>⚠️ Severity:</strong> <span style="color: ${
-              properties.severity === 'Critical' ? '#d32f2f' : 
-              properties.severity === 'High' ? '#ff8c00' : 
-              properties.severity === 'Medium' ? '#ffd700' : '#00ff00'
-            };">${properties.severity || 'N/A'}</span>
+          <p style="margin: 6px 0; font-size: 13px; color: #d1d5db; display: flex; justify-content: space-between;">
+            <strong style="color: #9ca3af;">Severity</strong>
+            <span style="color: ${
+              properties.severity === 'Critical' ? '#ef4444' : 
+              properties.severity === 'High' ? '#f97316' : 
+              properties.severity === 'Medium' ? '#fbbf24' : '#22c55e'
+            }; font-weight: 600;">${properties.severity || 'N/A'}</span>
           </p>
-          <p style="margin: 4px 0; font-size: 13px;">
-            <strong>📍 Location:</strong> ${properties.location || 'N/A'}
+          <p style="margin: 6px 0; font-size: 13px; color: #d1d5db; display: flex; justify-content: space-between;">
+            <strong style="color: #9ca3af;">Location</strong>
+            <span style="color: #e5e7eb;">${properties.location || 'N/A'}</span>
           </p>
-          <p style="margin: 4px 0; font-size: 13px;">
-            <strong>📅 Date:</strong> ${properties.date || 'N/A'}
+          <p style="margin: 6px 0; font-size: 13px; color: #d1d5db; display: flex; justify-content: space-between;">
+            <strong style="color: #9ca3af;">Date</strong>
+            <span style="color: #e5e7eb;">${properties.date || 'N/A'}</span>
           </p>
           ${properties.source ? `
-            <p style="margin: 4px 0; font-size: 13px;">
-              <strong>📰 Source:</strong> ${properties.source}
+            <p style="margin: 6px 0; font-size: 12px; color: #9ca3af; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.05);">
+              <strong>Source:</strong> ${properties.source}
             </p>
           ` : ''}
         </div>
         
         ${properties.description ? `
-          <p style="margin: 10px 0; font-size: 13px; color: #555; line-height: 1.4; max-height: 80px; overflow-y: auto;">
+          <p style="margin: 10px 0; font-size: 12px; color: #9ca3af; line-height: 1.6; max-height: 80px; overflow-y: auto;">
             ${properties.description.substring(0, 200)}${properties.description.length > 200 ? '...' : ''}
           </p>
         ` : ''}
@@ -610,21 +650,29 @@ function App() {
             target="_blank" 
             rel="noopener noreferrer"
             style="
-              display: inline-block; 
-              margin-top: 10px; 
-              padding: 8px 16px; 
-              background: #1976d2; 
-              color: white; 
+              display: inline-flex;
+              align-items: center;
+              gap: 6px;
+              margin-top: 12px; 
+              padding: 10px 16px; 
+              background: rgba(59, 130, 246, 0.2);
+              color: #60a5fa; 
               text-decoration: none; 
-              border-radius: 6px; 
+              border-radius: 8px; 
               font-size: 13px;
               font-weight: 500;
-              transition: background 0.3s;
+              transition: all 0.3s;
+              border: 1px solid rgba(59, 130, 246, 0.3);
             "
-            onmouseover="this.style.background='#1565c0'"
-            onmouseout="this.style.background='#1976d2'"
+            onmouseover="this.style.background='rgba(59, 130, 246, 0.3)'; this.style.borderColor='rgba(59, 130, 246, 0.5)'"
+            onmouseout="this.style.background='rgba(59, 130, 246, 0.2)'; this.style.borderColor='rgba(59, 130, 246, 0.3)'"
           >
-            📖 Read Full Article →
+            Read Full Article
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <line x1="10" y1="14" x2="21" y2="3"></line>
+            </svg>
           </a>
         ` : ''}
       </div>
@@ -648,134 +696,97 @@ function App() {
     <div style={{ position: 'relative', height: '100vh', width: '100%' }}>
       {/* Stats Panel */}
       <div className="stats-panel">
-        <h3> Global Crime Heatmap</h3>
-        <p>Total Incidents: <strong>{crimeData.length}</strong></p>
-        <p>Map Style: <strong>{mapStyle.charAt(0).toUpperCase() + mapStyle.slice(1)}</strong></p>
-        <p style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>
-          Globe View |  Atmosphere Effect |  Click map button to change style
-        </p>
+        <h3>
+          <Activity size={22} />
+          Crime Analytics
+        </h3>
         
-        {stats && (
-          <>
-            <h4>Severity Breakdown:</h4>
-            {stats.severity_levels.map(stat => (
-              <p key={stat._id}>
-                {stat._id}: <strong>{stat.count}</strong>
-              </p>
-            ))}
-          </>
-        )}
+        <div className="stat-box">
+          <p style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9ca3af', fontSize: '13px' }}>
+              <Shield size={15} />
+              Total Incidents
+            </span>
+            <strong style={{ fontSize: '18px', color: '#ffffff' }}>{crimeData.length}</strong>
+          </p>
+          <p style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: 0 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9ca3af', fontSize: '13px' }}>
+              <Layers size={15} />
+              Map Style
+            </span>
+            <strong style={{ fontSize: '14px', color: '#ffffff' }}>{mapStyle.charAt(0).toUpperCase() + mapStyle.slice(1)}</strong>
+          </p>
+        </div>
         
         <div className="severity-legend">
-          <h4>🔥 Crime Intensity Heatmap:</h4>
+          <h4>
+            <TrendingUp size={15} />
+            Heatmap Intensity
+          </h4>
           
-          {/* Advanced gradient legend */}
-          <div style={{
-            height: '20px',
-            borderRadius: '10px',
-            background: 'linear-gradient(to right, #00FF00, #32CD32, #7CFC00, #FFFF00, #FFD700, #FFA500, #FF8C00, #FF0000, #DC143C, #B22222, #8B0000)',
-            marginBottom: '15px',
-            border: '2px solid white',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
-          }}></div>
+          <div className="heatmap-gradient"></div>
           
-          <div style={{ fontSize: '11px', marginBottom: '15px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-              <span>🟢 Safe</span>
-              <span>🟡 Moderate</span>
-              <span>🟠 High Risk</span>
-              <span>🔴 Critical</span>
-            </div>
+          <div className="gradient-labels">
+            <span>Safe</span>
+            <span>Low</span>
+            <span>High</span>
+            <span>Critical</span>
           </div>
           
-          <h4>🎮 Map Controls:</h4>
-          <div style={{ fontSize: '11px', color: '#555', lineHeight: '1.4' }}>
-            <div style={{ marginBottom: '8px' }}>
-              <strong>🧭 Navigation:</strong><br/>
-              • Zoom in/out buttons<br/>
-              • Compass rotation<br/>
-              • Pitch visualization
-            </div>
-            <div style={{ marginBottom: '8px' }}>
-              <strong>📍 Location:</strong><br/>
-              • Find my location<br/>
-              • Track user position
-            </div>
-            <div style={{ marginBottom: '8px' }}>
-              <strong>🌍 Custom:</strong><br/>
-              • 🌍 Reset to globe view<br/>
-              • 🎯 Focus on Mumbai<br/>
-              • 🗺️ Toggle map style
-            </div>
-            <div style={{ marginBottom: '8px' }}>
-              <strong>🔧 Other:</strong><br/>
-              • Scale indicator<br/>
-              • Fullscreen mode<br/>
-              • Attribution info
-            </div>
-          </div>
+          <div className="section-divider"></div>
           
-          <h4>📍 Crime Point Indicators:</h4>
+          <h4>
+            <MapPin size={15} />
+            Incident Markers
+          </h4>
+          
           <div className="severity-item">
-            <div className="severity-dot" style={{ 
-              backgroundColor: '#00FF00', 
-              boxShadow: '0 0 8px rgba(0,255,0,0.5)' 
-            }}></div>
-            Low Severity Crimes
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="severity-dot" style={{ 
+                backgroundColor: '#22c55e',
+                color: '#22c55e'
+              }}></div>
+              <span>Low Risk</span>
+            </div>
+            {stats?.severity_levels.find(s => s._id === 'Low') && (
+              <strong style={{ fontSize: '13px' }}>{stats.severity_levels.find(s => s._id === 'Low').count}</strong>
+            )}
           </div>
           <div className="severity-item">
-            <div className="severity-dot" style={{ 
-              backgroundColor: '#FFD700',
-              boxShadow: '0 0 8px rgba(255,215,0,0.5)' 
-            }}></div>
-            Medium Severity Crimes
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="severity-dot" style={{ 
+                backgroundColor: '#fbbf24',
+                color: '#fbbf24'
+              }}></div>
+              <span>Medium Risk</span>
+            </div>
+            {stats?.severity_levels.find(s => s._id === 'Medium') && (
+              <strong style={{ fontSize: '13px' }}>{stats.severity_levels.find(s => s._id === 'Medium').count}</strong>
+            )}
           </div>
           <div className="severity-item">
-            <div className="severity-dot" style={{ 
-              backgroundColor: '#FF8C00',
-              boxShadow: '0 0 8px rgba(255,140,0,0.5)' 
-            }}></div>
-            High Severity Crimes
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="severity-dot" style={{ 
+                backgroundColor: '#f97316',
+                color: '#f97316'
+              }}></div>
+              <span>High Risk</span>
+            </div>
+            {stats?.severity_levels.find(s => s._id === 'High') && (
+              <strong style={{ fontSize: '13px' }}>{stats.severity_levels.find(s => s._id === 'High').count}</strong>
+            )}
           </div>
           <div className="severity-item">
-            <div className="severity-dot" style={{ 
-              backgroundColor: '#FF0000',
-              boxShadow: '0 0 12px rgba(255,0,0,0.8)'
-            }}></div>
-            Critical Crimes
-          </div>
-          
-          <div style={{ 
-            marginTop: '15px', 
-            padding: '10px', 
-            backgroundColor: 'rgba(0,0,0,0.1)', 
-            borderRadius: '8px',
-            fontSize: '11px',
-            color: '#555'
-          }}>
-            <strong>🏙️ Location Labels:</strong><br/>
-            • Google-style large city names<br/>
-            • Mumbai highlighted in red<br/>
-            • Major cities visible globally<br/>
-            • Local areas visible when zoomed<br/>
-            • Dynamic font sizing by zoom<br/>
-            • White text with dark halos
-          </div>
-          
-          <div style={{ 
-            marginTop: '10px', 
-            padding: '10px', 
-            backgroundColor: 'rgba(0,0,0,0.1)', 
-            borderRadius: '8px',
-            fontSize: '11px',
-            color: '#555'
-          }}>
-            <strong>💡 Enhanced Visibility:</strong><br/>
-            • Crime points visible from zoom 2<br/>
-            • Critical crimes visible globally<br/>
-            • Larger heatmap radius (25-80px)<br/>
-            • Enhanced intensity & opacity<br/>
-            • 3D buildings at high zoom
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="severity-dot" style={{ 
+                backgroundColor: '#ef4444',
+                color: '#ef4444'
+              }}></div>
+              <span>Critical Risk</span>
+            </div>
+            {stats?.severity_levels.find(s => s._id === 'Critical') && (
+              <strong style={{ fontSize: '13px' }}>{stats.severity_levels.find(s => s._id === 'Critical').count}</strong>
+            )}
           </div>
         </div>
       </div>

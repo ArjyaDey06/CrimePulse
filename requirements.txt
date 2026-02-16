@@ -1,0 +1,6 @@
+# Requirements for GitHub Actions Auto Scraper
+pymongo==4.6.1
+python-dotenv==1.0.0
+requests==2.31.0
+beautifulsoup4==4.12.2
+feedparser==6.0.10

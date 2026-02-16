@@ -1,9 +1,10 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import pymongo
 import urllib.parse
 import os
 from dotenv import load_dotenv
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -71,6 +72,54 @@ def get_stats():
             'crime_types': stats,
             'severity_levels': severity_stats,
             'total_records': crime_news_collection.count_documents({})
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/crime-data/new', methods=['GET'])
+def get_new_crime_data():
+    """Get only new crime data since a given timestamp"""
+    try:
+        # Get 'since' parameter (ISO format datetime string)
+        since = request.args.get('since')
+        
+        query = {}
+        if since:
+            try:
+                since_date = datetime.fromisoformat(since.replace('Z', '+00:00'))
+                query = {'created_at': {'$gt': since_date}}
+            except ValueError:
+                return jsonify({
+                    'success': False,
+                    'error': 'Invalid date format. Use ISO format.'
+                }), 400
+        
+        # Fetch new crimes
+        new_crimes = list(crime_news_collection.find(query, {
+            'latitude': 1,
+            'longitude': 1,
+            'crime_type': 1,
+            'severity_level': 1,
+            'location': 1,
+            'incident_date': 1,
+            'fir_number': 1,
+            'title': 1,
+            'description': 1,
+            'image_url': 1,
+            'source': 1,
+            'news_url': 1,
+            'created_at': 1,
+            '_id': 0
+        }).sort('created_at', -1))
+        
+        return jsonify({
+            'success': True,
+            'data': new_crimes,
+            'count': len(new_crimes),
+            'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
         return jsonify({
