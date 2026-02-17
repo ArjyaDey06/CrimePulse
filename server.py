@@ -5,6 +5,7 @@ import urllib.parse
 import os
 from dotenv import load_dotenv
 from datetime import datetime
+from crime_analytics import CrimeAnalytics
 
 # Load environment variables
 load_dotenv()
@@ -120,6 +121,106 @@ def get_new_crime_data():
             'data': new_crimes,
             'count': len(new_crimes),
             'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/analytics/hotspots', methods=['GET'])
+def get_hotspots():
+    """Get crime hotspots (high-risk areas)"""
+    try:
+        analytics = CrimeAnalytics()
+        hotspots = analytics.get_hotspots()
+        analytics.close()
+        
+        return jsonify({
+            'success': True,
+            'data': hotspots,
+            'count': len(hotspots)
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/analytics/patterns', methods=['GET'])
+def get_patterns():
+    """Get crime time patterns"""
+    try:
+        analytics = CrimeAnalytics()
+        patterns = analytics.get_time_patterns()
+        analytics.close()
+        
+        return jsonify({
+            'success': True,
+            'data': patterns
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/analytics/risk-score', methods=['GET'])
+def get_risk_score():
+    """Calculate risk score for a location"""
+    try:
+        lat = float(request.args.get('lat', 19.0760))
+        lon = float(request.args.get('lon', 72.8777))
+        radius = float(request.args.get('radius', 2))
+        
+        analytics = CrimeAnalytics()
+        risk = analytics.get_risk_score(lat, lon, radius)
+        analytics.close()
+        
+        return jsonify({
+            'success': True,
+            'data': risk
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/analytics/trends', methods=['GET'])
+def get_trends():
+    """Get crime trends over time"""
+    try:
+        days = int(request.args.get('days', 30))
+        
+        analytics = CrimeAnalytics()
+        trends = analytics.get_crime_trends(days)
+        analytics.close()
+        
+        return jsonify({
+            'success': True,
+            'data': trends
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/analytics/patrol-routes', methods=['GET'])
+def get_patrol_routes():
+    """Get suggested patrol routes for officers"""
+    try:
+        officer_count = int(request.args.get('officers', 5))
+        
+        analytics = CrimeAnalytics()
+        routes = analytics.get_patrol_suggestions(officer_count)
+        analytics.close()
+        
+        return jsonify({
+            'success': True,
+            'data': routes,
+            'count': len(routes)
         })
     except Exception as e:
         return jsonify({

@@ -17,6 +17,13 @@ function App() {
   const [mapStyle, setMapStyle] = useState('dark')
   const [lastFetchTime, setLastFetchTime] = useState(new Date().toISOString())
   const markersRef = useRef([])
+  const [analytics, setAnalytics] = useState({
+    hotspots: [],
+    patterns: null,
+    trends: null,
+    patrolRoutes: []
+  })
+  const [showAnalytics, setShowAnalytics] = useState(false)
 
   const mapStyles = {
     satellite: 'mapbox://styles/mapbox/satellite-v9',
@@ -48,6 +55,9 @@ function App() {
         // Update stats
         const statsResponse = await axios.get('http://localhost:5000/api/stats')
         setStats(statsResponse.data)
+        
+        // Update analytics
+        fetchAnalytics()
         
         // Update map source if map is loaded
         if (map.current && map.current.getSource('crimes')) {
@@ -87,6 +97,26 @@ function App() {
     }
   }
 
+  const fetchAnalytics = async () => {
+    try {
+      const [hotspotsRes, patternsRes, trendsRes, patrolRes] = await Promise.all([
+        axios.get('http://localhost:5000/api/analytics/hotspots'),
+        axios.get('http://localhost:5000/api/analytics/patterns'),
+        axios.get('http://localhost:5000/api/analytics/trends?days=30'),
+        axios.get('http://localhost:5000/api/analytics/patrol-routes?officers=5')
+      ])
+      
+      setAnalytics({
+        hotspots: hotspotsRes.data.data || [],
+        patterns: patternsRes.data.data || null,
+        trends: trendsRes.data.data || null,
+        patrolRoutes: patrolRes.data.data || []
+      })
+    } catch (error) {
+      console.error('Error fetching analytics:', error)
+    }
+  }
+
   useEffect(() => {
     // Fetch crime data from API
     const fetchData = async () => {
@@ -99,6 +129,9 @@ function App() {
         setCrimeData(crimeResponse.data.data)
         setStats(statsResponse.data)
         setLoading(false)
+        
+        // Fetch analytics after initial data load
+        fetchAnalytics()
       } catch (error) {
         console.error('Error fetching data:', error)
         setLoading(false)
@@ -590,6 +623,122 @@ function App() {
     }
   }, [crimeData])
 
+  // Add hotspot visualization when analytics data updates
+  useEffect(() => {
+    if (!map.current || analytics.hotspots.length === 0) return
+
+    // Wait for map to be loaded
+    if (!map.current.isStyleLoaded()) return
+
+    // Remove existing hotspot layers if any
+    if (map.current.getLayer('hotspot-circles')) {
+      map.current.removeLayer('hotspot-circles')
+    }
+    if (map.current.getSource('hotspots')) {
+      map.current.removeSource('hotspots')
+    }
+
+    // Add hotspots as a source
+    map.current.addSource('hotspots', {
+      type: 'geojson',
+      data: {
+        type: 'FeatureCollection',
+        features: analytics.hotspots.map(hotspot => ({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [hotspot.longitude, hotspot.latitude]
+          },
+          properties: {
+            location: hotspot.location,
+            risk_score: hotspot.risk_score,
+            crime_count: hotspot.crime_count,
+            radius_km: hotspot.radius_km || 1.5
+          }
+        }))
+      }
+    })
+
+    // Add hotspot visualization layer
+    map.current.addLayer({
+      id: 'hotspot-circles',
+      type: 'circle',
+      source: 'hotspots',
+      paint: {
+        'circle-radius': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          8, 15,
+          12, 25,
+          15, 40
+        ],
+        'circle-color': [
+          'interpolate',
+          ['linear'],
+          ['get', 'risk_score'],
+          0, '#fbbf24',
+          50, '#f97316',
+          70, '#ef4444',
+          100, '#991b1b'
+        ],
+        'circle-opacity': 0.2,
+        'circle-stroke-width': 3,
+        'circle-stroke-color': [
+          'interpolate',
+          ['linear'],
+          ['get', 'risk_score'],
+          0, '#fbbf24',
+          50, '#f97316',
+          70, '#ef4444',
+          100, '#991b1b'
+        ],
+        'circle-stroke-opacity': 0.6
+      }
+    })
+
+    // Add popup for hotspots
+    map.current.on('click', 'hotspot-circles', (e) => {
+      const properties = e.features[0].properties
+      const coordinates = e.features[0].geometry.coordinates.slice()
+
+      const popup = new mapboxgl.Popup()
+        .setLngLat(coordinates)
+        .setHTML(`
+          <div style="padding: 12px; background: rgba(0,0,0,0.95); color: #fff; border-radius: 8px;">
+            <h4 style="margin: 0 0 8px 0; color: #fff; font-size: 14px; font-weight: 600;">
+              Hotspot: ${properties.location}
+            </h4>
+            <p style="margin: 4px 0; font-size: 12px; color: #d1d5db;">
+              <strong>Risk Score:</strong> 
+              <span style="color: ${
+                properties.risk_score >= 70 ? '#ef4444' : 
+                properties.risk_score >= 50 ? '#f97316' : '#fbbf24'
+              }; font-weight: 600;">
+                ${Math.round(properties.risk_score)}/100
+              </span>
+            </p>
+            <p style="margin: 4px 0; font-size: 12px; color: #d1d5db;">
+              <strong>Crimes:</strong> ${properties.crime_count}
+            </p>
+            <p style="margin: 4px 0; font-size: 12px; color: #d1d5db;">
+              <strong>Coverage:</strong> ${properties.radius_km}km radius
+            </p>
+          </div>
+        `)
+        .addTo(map.current)
+    })
+
+    map.current.on('mouseenter', 'hotspot-circles', () => {
+      map.current.getCanvas().style.cursor = 'pointer'
+    })
+
+    map.current.on('mouseleave', 'hotspot-circles', () => {
+      map.current.getCanvas().style.cursor = ''
+    })
+
+  }, [analytics.hotspots])
+
   const showPopup = (e) => {
     const coordinates = e.features[0].geometry.coordinates.slice()
     const properties = e.features[0].properties
@@ -789,6 +938,217 @@ function App() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Analytics Insights Panel */}
+      <div style={{
+        position: 'absolute',
+        top: '20px',
+        right: '20px',
+        background: 'rgba(0, 0, 0, 0.92)',
+        backdropFilter: 'blur(20px)',
+        padding: '20px',
+        borderRadius: '16px',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.8)',
+        border: '1px solid rgba(255, 255, 255, 0.15)',
+        maxWidth: '350px',
+        maxHeight: '80vh',
+        overflowY: 'auto',
+        zIndex: 1
+      }}>
+        <h3 style={{
+          margin: '0 0 16px 0',
+          color:  '#ffffff',
+          fontSize: '18px',
+          fontWeight: '700',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          paddingBottom: '12px',
+          borderBottom: '2px solid rgba(255, 255, 255, 0.1)'
+        }}>
+          <Activity size={20} />
+          AI Insights
+        </h3>
+
+        {/* Hotspots Section */}
+        {analytics.hotspots.length > 0 && (
+          <div style={{ marginBottom: '20px' }}>
+            <h4 style={{
+              color: '#e2e8f0',
+              fontSize: '13px',
+              fontWeight: '600',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              marginBottom: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <AlertTriangle size={14} color="#ef4444" />
+              Top {analytics.hotspots.length} Hotspots
+            </h4>
+            {analytics.hotspots.slice(0, 5).map((hotspot, idx) => (
+              <div key={idx} style={{
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '8px',
+                padding: '10px',
+                marginBottom: '8px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <strong style={{ color: '#ffffff', fontSize: '13px' }}>{hotspot.location}</strong>
+                  <span style={{
+                    background: hotspot.risk_score >= 70 ? '#ef4444' : hotspot.risk_score >= 50 ? '#f97316' : '#fbbf24',
+                    color: '#000',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    fontSize: '11px',
+                    fontWeight: '600'
+                  }}>
+                    {Math.round(hotspot.risk_score)}
+                  </span>
+                </div>
+                <div style={{ fontSize: '11px', color: '#9ca3af' }}>
+                  {hotspot.crime_count} crimes • {hotspot.critical_crimes} critical
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Time Patterns */}
+        {analytics.patterns && (
+          <div style={{ marginBottom: '20px' }}>
+            <h4 style={{
+              color: '#e2e8f0',
+              fontSize: '13px',
+              fontWeight: '600',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              marginBottom: '10px'
+            }}>
+              Peak Crime Times
+            </h4>
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '8px',
+              padding: '12px'
+            }}>
+              <div style={{ marginBottom: '8px' }}>
+                <span style={{ color: '#9ca3af', fontSize: '12px' }}>Peak Hour:</span>
+                <strong style={{ color: '#ffffff', fontSize: '14px', marginLeft: '8px' }}>
+                  {analytics.patterns.peak_hour}:00 ({analytics.patterns.peak_hour_count} crimes)
+                </strong>
+              </div>
+              <div>
+                <span style={{ color: '#9ca3af', fontSize: '12px' }}>Peak Day:</span>
+                <strong style={{ color: '#ffffff', fontSize: '14px', marginLeft: '8px' }}>
+                  {analytics.patterns.peak_day} ({analytics.patterns.peak_day_count} crimes)
+                </strong>
+              </div>
+              {analytics.patterns.high_risk_hours && analytics.patterns.high_risk_hours.length > 0 && (
+                <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                  <span style={{ color: '#9ca3af', fontSize: '11px' }}>High-risk hours:</span>
+                  <div style={{ color: '#fbbf24', fontSize: '12px', marginTop: '4px' }}>
+                    {analytics.patterns.high_risk_hours.join(':00, ')}:00
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Trends */}
+        {analytics.trends && (
+          <div style={{ marginBottom: '20px' }}>
+            <h4 style={{
+              color: '#e2e8f0',
+              fontSize: '13px',
+              fontWeight: '600',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              marginBottom: '10px'
+            }}>
+              30-Day Trend
+            </h4>
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '8px',
+              padding: '12px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ color: '#9ca3af', fontSize: '12px' }}>Total:</span>
+                <strong style={{ color: '#ffffff', fontSize: '14px' }}>{analytics.trends.total_crimes}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ color: '#9ca3af', fontSize: '12px' }}>Trend:</span>
+                <strong style={{ 
+                  color: analytics.trends.trend === 'increasing' ? '#ef4444' : '#22c55e',
+                  fontSize: '14px'
+                }}>
+                  {analytics.trends.trend === 'increasing' ? '↗' : '↘'} {analytics.trends.trend} ({Math.abs(analytics.trends.change_percent)}%)
+                </strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#9ca3af', fontSize: '12px' }}>Avg/day:</span>
+                <strong style={{ color: '#ffffff', fontSize: '14px' }}>{analytics.trends.average_per_day}</strong>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Patrol Routes */}
+        {analytics.patrolRoutes.length > 0 && (
+          <div>
+            <h4 style={{
+              color: '#e2e8f0',
+              fontSize: '13px',
+              fontWeight: '600',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              marginBottom: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <MapPin size={14} color="#60a5fa" />
+              Patrol Priorities
+            </h4>
+            {analytics.patrolRoutes.map((route, idx) => (
+              <div key={idx} style={{
+                background: 'rgba(59, 130, 246, 0.1)',
+                border: '1px solid rgba(59, 130, 246, 0.2)',
+                borderRadius: '8px',
+                padding: '10px',
+                marginBottom: '8px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <span style={{
+                    background: '#60a5fa',
+                    color: '#000',
+                    width: '20px',
+                    height: '20px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '11px',
+                    fontWeight: '700'
+                  }}>
+                    {route.priority}
+                  </span>
+                  <strong style={{ color: '#ffffff', fontSize: '13px' }}>{route.location}</strong>
+                </div>
+                <div style={{ fontSize: '11px', color: '#9ca3af', paddingLeft: '28px' }}>
+                  Risk {route.risk_score} • {route.crime_count} crimes
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Map Container */}
