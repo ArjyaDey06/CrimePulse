@@ -1,100 +1,184 @@
-import { useState, useEffect, useRef } from 'react'
-import mapboxgl from 'mapbox-gl'
+import { useState, useEffect, useMemo } from 'react'
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, Link } from 'react-router-dom'
 import axios from 'axios'
-import { Globe, Target, Layers, AlertTriangle, MapPin, Calendar, FileText, ExternalLink, Activity, TrendingUp, Shield } from 'lucide-react'
-import 'mapbox-gl/dist/mapbox-gl.css'
+import MapView from './components/MapView'
+import AnalyticsPage from './components/AnalyticsPage'
+import AuthPage from './components/AuthPage'
+import { MapPin, BarChart3, LogOut, User } from 'lucide-react'
 import './App.css'
 
+// Protected Route Component
+function ProtectedRoute({ children, isAuthenticated }) {
+  return isAuthenticated ? children : <Navigate to="/auth" replace />
+}
 
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_KEY
+// Header Component with User Info
+function Header({ user, onLogout }) {
+  const navigate = useNavigate()
+  
+  if (!user) return null
+  
+  return (
+    <header className="bg-white shadow-md sticky top-0 z-1000 border-b border-gray-200">
+      <div className="max-w-screen-2xl mx-auto px-6 py-4">
+        <div className="flex justify-between items-center">
+          {/* Logo Section */}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#667eea" }}>
+              <div className="w-6 h-6 rounded-sm bg-white flex items-center justify-center">
+                <svg viewBox="0 0 24 24" fill="#667eea" className="w-full h-full p-1">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                </svg>
+              </div>
+            </div>
+            <h1 className="text-2xl font-bold bg-linear-to-r from-[#667eea] to-[#764ba2] bg-clip-text text-transparent">
+              CrimePulse
+            </h1>
+          </div>
+
+          {/* Navigation Links */}
+          <nav className="hidden md:flex items-center gap-1">
+            <Link
+              to="/"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-all duration-200 font-medium text-sm"
+            >
+              <MapPin className="w-4 h-4" />
+              Map View
+            </Link>
+            <Link
+              to="/analytics"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-all duration-200 font-medium text-sm"
+            >
+              <BarChart3 className="w-4 h-4" />
+              Analytics
+            </Link>
+          </nav>
+
+          {/* User Section */}
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">
+              <User className="w-4 h-4 text-gray-600" />
+              <span className="text-sm font-medium text-gray-700">
+                {user.name || user.email}
+              </span>
+            </div>
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium text-sm transition-all duration-300 hover:opacity-90 hover:shadow-lg active:scale-95"
+              style={{ backgroundColor: "#667eea" }}
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+  )
+}
 
 function App() {
-  const mapContainer = useRef(null)
-  const map = useRef(null)
   const [crimeData, setCrimeData] = useState([])
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState(null)
-  const [mapStyle, setMapStyle] = useState('dark')
-  const [lastFetchTime, setLastFetchTime] = useState(new Date().toISOString())
-  const markersRef = useRef([])
   const [analytics, setAnalytics] = useState({
     hotspots: [],
     patterns: null,
     trends: null,
     patrolRoutes: []
   })
-  const [showAnalytics, setShowAnalytics] = useState(false)
+  const [selectedCrimeTypes, setSelectedCrimeTypes] = useState(new Set())
+  const [lastFetchTime, setLastFetchTime] = useState(new Date().toISOString())
+  
+  // Authentication state
+  const [user, setUser] = useState(null)
+  const [token, setToken] = useState(null)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
 
-  const mapStyles = {
-    satellite: 'mapbox://styles/mapbox/satellite-v9',
-    streets: 'mapbox://styles/mapbox/streets-v12',
-    light: 'mapbox://styles/mapbox/light-v11',
-    dark: 'mapbox://styles/mapbox/dark-v11',
-    outdoors: 'mapbox://styles/mapbox/outdoors-v12'
-  }
-
-  const toggleMapStyle = () => {
-    const newStyle = mapStyle === 'satellite' ? 'streets' : 'satellite'
-    setMapStyle(newStyle)
-    if (map.current) {
-      map.current.setStyle(mapStyles[newStyle])
-    }
-  }
-
-  const fetchNewCrimeData = async () => {
-    try {
-      const response = await axios.get(`http://localhost:5000/api/crime-data/new?since=${lastFetchTime}`)
+  // Check for existing auth on mount
+  useEffect(() => {
+    const storedToken = localStorage.getItem('token')
+    const storedUser = localStorage.getItem('user')
+    
+    if (storedToken && storedUser) {
+      setToken(storedToken)
+      setUser(JSON.parse(storedUser))
+      setIsAuthenticated(true)
       
-      if (response.data.success && response.data.data.length > 0) {
-        const newCrimes = response.data.data
-        console.log(`🆕 Found ${newCrimes.length} new crime(s)`)
-        
-        // Add new crimes to existing data
-        setCrimeData(prev => [...newCrimes, ...prev])
-        
-        // Update stats
-        const statsResponse = await axios.get('http://localhost:5000/api/stats')
-        setStats(statsResponse.data)
-        
-        // Update analytics
-        fetchAnalytics()
-        
-        // Update map source if map is loaded
-        if (map.current && map.current.getSource('crimes')) {
-          const updatedData = [...newCrimes, ...crimeData]
-          map.current.getSource('crimes').setData({
-            type: 'FeatureCollection',
-            features: updatedData.map(crime => ({
-              type: 'Feature',
-              geometry: {
-                type: 'Point',
-                coordinates: [crime.longitude, crime.latitude]
-              },
-              properties: {
-                id: crime.fir_number,
-                crime_type: crime.crime_type,
-                severity: crime.severity_level,
-                date: crime.incident_date,
-                title: crime.title,
-                description: crime.description,
-                image_url: crime.image_url,
-                location: crime.location,
-                source: crime.source,
-                news_url: crime.news_url,
-                weight: crime.severity_level === 'Critical' ? 4 : 
-                       crime.severity_level === 'High' ? 3 : 
-                       crime.severity_level === 'Medium' ? 2 : 1
-              }
-            }))
-          })
-        }
-        
-        // Update last fetch time
-        setLastFetchTime(response.data.timestamp)
-      }
-    } catch (error) {
-      console.error('Error fetching new data:', error)
+      // Set axios default authorization header
+      axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`
     }
+  }, [])
+
+  // Handle login
+  const handleLogin = (userData, authToken) => {
+    setUser(userData)
+    setToken(authToken)
+    setIsAuthenticated(true)
+    
+    // Set axios default authorization header
+    axios.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
+  }
+
+  // Handle logout
+  const handleLogout = () => {
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    setUser(null)
+    setToken(null)
+    setIsAuthenticated(false)
+    
+    // Remove axios authorization header
+    delete axios.defaults.headers.common['Authorization']
+  }
+
+  // Get unique crime types from data
+  const availableCrimeTypes = useMemo(() => {
+    const types = new Set()
+    crimeData.forEach(crime => {
+      if (crime.crime_type) {
+        types.add(crime.crime_type.toLowerCase())
+      }
+    })
+    return Array.from(types).sort()
+  }, [crimeData])
+
+  // Initialize selected crime types when data loads
+  useEffect(() => {
+    if (availableCrimeTypes.length > 0 && selectedCrimeTypes.size === 0) {
+      setSelectedCrimeTypes(new Set(availableCrimeTypes))
+    }
+  }, [availableCrimeTypes])
+
+  // Filter crime data based on selected types
+  const filteredCrimeData = useMemo(() => {
+    if (selectedCrimeTypes.size === 0) return crimeData
+    return crimeData.filter(crime => 
+      selectedCrimeTypes.has(crime.crime_type?.toLowerCase())
+    )
+  }, [crimeData, selectedCrimeTypes])
+
+  // Toggle crime type selection
+  const toggleCrimeType = (type) => {
+    setSelectedCrimeTypes(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(type)) {
+        newSet.delete(type)
+      } else {
+        newSet.add(type)
+      }
+      return newSet
+    })
+  }
+
+  // Select all crime types
+  const selectAllCrimeTypes = () => {
+    setSelectedCrimeTypes(new Set(availableCrimeTypes))
+  }
+
+  // Deselect all crime types
+  const deselectAllCrimeTypes = () => {
+    setSelectedCrimeTypes(new Set())
   }
 
   const fetchAnalytics = async () => {
@@ -121,11 +205,13 @@ function App() {
     // Fetch crime data from API
     const fetchData = async () => {
       try {
+        console.log('Fetching crime data...')
         const [crimeResponse, statsResponse] = await Promise.all([
           axios.get('http://localhost:5000/api/crime-data'),
           axios.get('http://localhost:5000/api/stats')
         ])
         
+        console.log('Crime data received:', crimeResponse.data.data.length, 'crimes')
         setCrimeData(crimeResponse.data.data)
         setStats(statsResponse.data)
         setLoading(false)
@@ -134,6 +220,7 @@ function App() {
         fetchAnalytics()
       } catch (error) {
         console.error('Error fetching data:', error)
+        // Set loading to false even on error so map can render
         setLoading(false)
       }
     }
@@ -143,1017 +230,79 @@ function App() {
 
   // Poll for new data every 60 seconds
   useEffect(() => {
-    const pollInterval = setInterval(() => {
-      fetchNewCrimeData()
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await axios.get(`http://localhost:5000/api/crime-data/new?since=${lastFetchTime}`)
+        
+        if (response.data.success && response.data.data.length > 0) {
+          const newCrimes = response.data.data
+          console.log(`🆕 Found ${newCrimes.length} new crime(s)`)
+          
+          setCrimeData(prev => [...newCrimes, ...prev])
+          
+          const statsResponse = await axios.get('http://localhost:5000/api/stats')
+          setStats(statsResponse.data)
+          
+          fetchAnalytics()
+          setLastFetchTime(response.data.timestamp)
+        }
+      } catch (error) {
+        console.error('Error fetching new data:', error)
+      }
     }, 60000) // 60 seconds
 
     return () => clearInterval(pollInterval)
-  }, [lastFetchTime, crimeData])
-
-  useEffect(() => {
-    if (!mapContainer.current || crimeData.length === 0) return
-
-    // Initialize map with globe projection
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: mapStyles[mapStyle],
-      center: [72.8777, 19.0760], // Mumbai center
-      zoom: 3, // Start with global view
-      pitch: 60, // 60-degree tilt
-      bearing: 0,
-      projection: 'globe', // Enable globe projection
-      minZoom: 1,
-      maxZoom: 18
-    })
-
-    // Add all available Mapbox controls
-    // 1. Navigation Control (zoom + rotation)
-    map.current.addControl(new mapboxgl.NavigationControl({
-      visualizePitch: true,
-      showCompass: true,
-      showZoom: true
-    }), 'top-right')
-
-    // 2. Geolocate Control (find user location)
-    map.current.addControl(new mapboxgl.GeolocateControl({
-      positionOptions: {
-        enableHighAccuracy: true
-      },
-      trackUserLocation: true,
-      showUserLocation: true,
-      showUserHeading: true
-    }), 'top-right')
-
-    // 3. Scale Control
-    map.current.addControl(new mapboxgl.ScaleControl({
-      maxWidth: 150,
-      unit: 'metric'
-    }), 'bottom-left')
-
-    // 4. Fullscreen Control
-    map.current.addControl(new mapboxgl.FullscreenControl(), 'top-right')
-
-    // 5. Attribution Control (move to bottom)
-    map.current.addControl(new mapboxgl.AttributionControl({
-      compact: true
-    }), 'bottom-right')
-
-    // Add custom controls for enhanced functionality
-    // 6. Reset Globe View Button
-    class ResetGlobeControl {
-      onAdd(map) {
-        this._map = map
-        this._container = document.createElement('div')
-        this._container.className = 'mapboxgl-ctrl mapboxgl-ctrl-group'
-        this._container.innerHTML = `
-          <button class="control-button" title="Reset to Globe View">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>
-            </svg>
-          </button>
-        `
-        this._container.addEventListener('click', () => {
-          map.flyTo({
-            center: [72.8777, 19.0760],
-            zoom: 3,
-            pitch: 60,
-            bearing: 0,
-            duration: 2000
-          })
-        })
-        return this._container
-      }
-      onRemove() {
-        this._container.parentNode.removeChild(this._container)
-        this._map = undefined
-      }
-    }
-    map.current.addControl(new ResetGlobeControl(), 'top-right')
-
-    // 7. Focus Mumbai Button
-    class FocusMumbaiControl {
-      onAdd(map) {
-        this._map = map
-        this._container = document.createElement('div')
-        this._container.className = 'mapboxgl-ctrl mapboxgl-ctrl-group'
-        this._container.innerHTML = `
-          <button class="control-button" title="Focus on Mumbai">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
-            </svg>
-          </button>
-        `
-        this._container.addEventListener('click', () => {
-          map.flyTo({
-            center: [72.8777, 19.0760],
-            zoom: 11,
-            pitch: 60,
-            bearing: 0,
-            duration: 2000
-          })
-        })
-        return this._container
-      }
-      onRemove() {
-        this._container.parentNode.removeChild(this._container)
-        this._map = undefined
-      }
-    }
-    map.current.addControl(new FocusMumbaiControl(), 'top-right')
-
-    // 8. Map Style Toggle Control
-    class MapStyleControl {
-      onAdd(map) {
-        this._map = map
-        this._container = document.createElement('div')
-        this._container.className = 'mapboxgl-ctrl mapboxgl-ctrl-group'
-        this._container.innerHTML = `
-          <button id="style-toggle-btn" class="control-button" title="Toggle Satellite/Street View">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
-            </svg>
-          </button>
-        `
-        return this._container
-      }
-      onRemove() {
-        this._container.parentNode.removeChild(this._container)
-        this._map = undefined
-      }
-    }
-    map.current.addControl(new MapStyleControl(), 'top-right')
-
-    // Add click handler for style toggle
-    document.getElementById('style-toggle-btn').addEventListener('click', toggleMapStyle)
-
-    // Add atmosphere effect for globe
-    map.current.on('style.load', () => {
-      map.current.setFog({
-        'horizon-blend': 0.1,
-        'color': 'grey',
-        'high-color': '#245cdf',
-        'space-color': '#000',
-        'star-intensity': 0.15
-      })
-    })
-
-    // Wait for map to load before adding data
-    map.current.on('load', () => {
-      // Add crime data as source
-      map.current.addSource('crimes', {
-        type: 'geojson',
-        data: {
-          type: 'FeatureCollection',
-          features: crimeData.map(crime => ({
-            type: 'Feature',
-            geometry: {
-              type: 'Point',
-              coordinates: [crime.longitude, crime.latitude]
-            },
-            properties: {
-              id: crime.fir_number,
-              crime_type: crime.crime_type,
-              severity: crime.severity_level,
-              date: crime.incident_date,
-              title: crime.title,
-              description: crime.description,
-              image_url: crime.image_url,
-              location: crime.location,
-              source: crime.source,
-              news_url: crime.news_url,
-              // Weight crimes by severity for heatmap intensity
-              weight: crime.severity_level === 'Critical' ? 4 : 
-                     crime.severity_level === 'High' ? 3 : 
-                     crime.severity_level === 'Medium' ? 2 : 1
-            }
-          }))
-        }
-      })
-
-      // Add advanced multi-colored heatmap layer
-      map.current.addLayer({
-        id: 'crime-heatmap',
-        type: 'heatmap',
-        source: 'crimes',
-        paint: {
-          // Weight by crime severity for more realistic heatmap
-          'heatmap-weight': [
-            'interpolate',
-            ['linear'],
-            ['get', 'weight'],
-            0, 0,
-            1, 0.8,
-            2, 1.5,
-            3, 2.5,
-            4, 4
-          ],
-          // Significantly increased heatmap intensity for better visibility
-          'heatmap-intensity': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            0, 2,
-            3, 3,
-            8, 4,
-            12, 5,
-            15, 6,
-            18, 8
-          ],
-          // Advanced multi-color gradient for crime severity with enhanced opacity
-          'heatmap-color': [
-            'interpolate',
-            ['linear'],
-            ['heatmap-density'],
-            // No density - transparent
-            0, 'rgba(0,0,0,0)',
-            // Low density - bright green (safe areas)
-            0.05, 'rgba(0,255,0,0.6)',
-            0.15, 'rgba(50,205,50,0.7)',
-            0.25, 'rgba(124,252,0,0.8)',
-            // Medium density - yellow (moderate risk)
-            0.35, 'rgba(255,255,0,0.9)',
-            0.45, 'rgba(255,215,0,1)',
-            0.55, 'rgba(255,165,0,1)',
-            // High density - orange (high risk)
-            0.65, 'rgba(255,140,0,1)',
-            0.75, 'rgba(255,69,0,1)',
-            // Critical density - red to dark red (danger zones)
-            0.8, 'rgba(255,0,0,1)',
-            0.85, 'rgba(220,20,60,1)',
-            0.9, 'rgba(178,34,34,1)',
-            0.95, 'rgba(139,0,0,1)',
-            1, 'rgba(100,0,0,1)'
-          ],
-          // Significantly larger radius for better visibility at all zoom levels
-          'heatmap-radius': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            0, 25,
-            3, 30,
-            8, 40,
-            12, 50,
-            15, 60,
-            18, 80
-          ],
-          // Enhanced opacity for better visibility
-          'heatmap-opacity': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            0, 0.8,
-            3, 0.85,
-            8, 0.9,
-            12, 0.95,
-            15, 1
-          ]
-        }
-      }, 'waterway-label')
-
-      // Add 3D extrusion layer for buildings at high zoom (optional enhancement)
-      map.current.addLayer({
-        id: '3d-buildings',
-        source: 'composite',
-        'source-layer': 'building',
-        filter: ['==', 'extrude', 'true'],
-        type: 'fill-extrusion',
-        minzoom: 15,
-        paint: {
-          'fill-extrusion-color': '#aaa',
-          'fill-extrusion-height': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            15, 0,
-            15.05, ['get', 'height']
-          ],
-          'fill-extrusion-opacity': 0.6
-        }
-      })
-
-      // Add individual crime points with enhanced visibility at all zoom levels
-      map.current.addLayer({
-        id: 'crime-points',
-        type: 'circle',
-        source: 'crimes',
-        minzoom: 2, // Show points much earlier
-        paint: {
-          // Larger base sizes for better visibility
-          'circle-radius': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            2, ['*', ['get', 'weight'], 8],
-            5, ['*', ['get', 'weight'], 12],
-            10, ['*', ['get', 'weight'], 15],
-            15, ['*', ['get', 'weight'], 20],
-            18, ['*', ['get', 'weight'], 25]
-          ],
-          // Multi-color based on severity with enhanced visibility
-          'circle-color': [
-            'match',
-            ['get', 'severity'],
-            'Low', '#00FF00',
-            'Medium', '#FFD700',
-            'High', '#FF8C00',
-            'Critical', '#FF0000',
-            '#FFFFFF'
-          ],
-          'circle-stroke-color': '#FFFFFF',
-          'circle-stroke-width': 3,
-          'circle-opacity': 1,
-          // Enhanced glow effect for all crimes
-          'circle-blur': [
-            'match',
-            ['get', 'severity'],
-            'Critical', 2,
-            'High', 1.5,
-            'Medium', 1,
-            'Low', 0.5,
-            0
-          ]
-        }
-      })
-
-      // Add large Google-style location labels
-      const locations = [
-        { name: 'Mumbai', coordinates: [72.8777, 19.0760], zoom: [1, 18] },
-        { name: 'Delhi', coordinates: [77.2090, 28.6139], zoom: [1, 8] },
-        { name: 'Bangalore', coordinates: [77.5946, 12.9716], zoom: [1, 8] },
-        { name: 'Kolkata', coordinates: [88.3639, 22.5726], zoom: [1, 8] },
-        { name: 'Chennai', coordinates: [80.2707, 13.0827], zoom: [1, 8] },
-        { name: 'Hyderabad', coordinates: [78.4867, 17.3850], zoom: [1, 8] },
-        { name: 'Ahmedabad', coordinates: [72.5714, 23.0225], zoom: [1, 6] },
-        { name: 'Pune', coordinates: [73.8567, 18.5204], zoom: [3, 12] },
-        { name: 'Nagpur', coordinates: [79.0882, 21.1458], zoom: [3, 10] },
-        { name: 'Jaipur', coordinates: [75.7873, 26.9124], zoom: [3, 8] },
-        { name: 'Lucknow', coordinates: [80.9462, 26.8467], zoom: [3, 8] },
-        { name: 'Surat', coordinates: [72.8311, 21.1702], zoom: [3, 10] },
-        { name: 'Andheri', coordinates: [72.8355, 19.1183], zoom: [8, 18] },
-        {name: 'Bandra', coordinates: [72.8392, 19.0612], zoom: [8, 18] },
-        { name: 'Borivali', coordinates: [72.8567, 19.2333], zoom: [8, 18] },
-        { name: 'Chembur', coordinates: [72.9087, 19.0511], zoom: [8, 18] },
-        { name: 'Dahisar', coordinates: [72.8446, 19.2524], zoom: [8, 18] },
-        { name: 'Ghatkopar', coordinates: [72.9087, 19.0815], zoom: [8, 18] },
-        { name: 'Jogeshwari', coordinates: [72.8446, 19.1447], zoom: [8, 18] },
-        { name: 'Kandivali', coordinates: [72.8333, 19.2083], zoom: [8, 18] },
-        { name: 'Malwani', coordinates: [72.8000, 19.2333], zoom: [8, 18] },
-        { name: 'Mulund', coordinates: [72.9583, 19.1750], zoom: [8, 18] },
-        { name: 'Oshiwara', coordinates: [72.8250, 19.1333], zoom: [8, 18] },
-        { name: 'Powai', coordinates: [72.9064, 19.1244], zoom: [8, 18] },
-        { name: 'Vakola', coordinates: [72.8250, 19.0850], zoom: [8, 18] }
-      ]
-
-      // Add location labels as symbols
-      locations.forEach((location, index) => {
-        map.current.addLayer({
-          id: `location-label-${index}`,
-          type: 'symbol',
-          source: {
-            type: 'geojson',
-            data: {
-              type: 'FeatureCollection',
-              features: [{
-                type: 'Feature',
-                geometry: {
-                  type: 'Point',
-                  coordinates: location.coordinates
-                },
-                properties: {
-                  name: location.name,
-                  title: location.name
-                }
-              }]
-            }
-          },
-          minzoom: location.zoom[0],
-          maxzoom: location.zoom[1],
-          layout: {
-            'text-field': ['get', 'name'],
-            'text-font': ['Arial Black', 'Arial Unicode MS Bold', 'Microsoft YaHei', 'SimHei', 'sans-serif'],
-            'text-size': [
-              'interpolate',
-              ['linear'],
-              ['zoom'],
-              location.zoom[0], location.zoom[0] <= 3 ? 24 : location.zoom[0] <= 6 ? 18 : 14,
-              location.zoom[0] + 2, location.zoom[0] <= 3 ? 32 : location.zoom[0] <= 6 ? 24 : 18,
-              location.zoom[0] + 4, location.zoom[0] <= 3 ? 40 : location.zoom[0] <= 6 ? 30 : 22,
-              location.zoom[1], location.zoom[0] <= 3 ? 48 : location.zoom[0] <= 6 ? 36 : 28
-            ],
-            'text-max-width': 10,
-            'text-letter-spacing': 0.05,
-            'text-anchor': 'center',
-            'text-justify': 'center',
-            'text-offset': [0, -0.5],
-            'text-allow-overlap': false,
-            'text-ignore-placement': false,
-            'visibility': 'visible'
-          },
-          paint: {
-            'text-color': location.name === 'Mumbai' ? '#FFFFFF' : '#FFFFFF',
-            'text-halo-color': location.name === 'Mumbai' ? '#FF0000' : '#000000',
-            'text-halo-width': location.name === 'Mumbai' ? 4 : 3,
-            'text-halo-blur': 0.5,
-            'text-opacity': [
-              'interpolate',
-              ['linear'],
-              ['zoom'],
-              location.zoom[0], 0.7,
-              location.zoom[0] + 2, 0.8,
-              location.zoom[0] + 4, 0.9,
-              location.zoom[1], 1
-            ]
-          }
-        })
-      })
-
-      // Add Mumbai city boundary highlight
-      map.current.addLayer({
-        id: 'mumbai-highlight',
-        type: 'circle',
-        source: {
-          type: 'geojson',
-          data: {
-            type: 'FeatureCollection',
-            features: [{
-              type: 'Feature',
-              geometry: {
-                type: 'Point',
-                coordinates: [72.8777, 19.0760]
-              },
-              properties: {}
-            }]
-          }
-        },
-        minzoom: 1,
-        maxzoom: 8,
-        paint: {
-          'circle-radius': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            1, 80,
-            3, 120,
-            5, 150,
-            8, 200
-          ],
-          'circle-color': 'rgba(255,0,0,0.1)',
-          'circle-stroke-color': '#FF0000',
-          'circle-stroke-width': 3,
-          'circle-opacity': 0.3
-        }
-      })
-
-      // Add popup on click for crime points
-      map.current.on('click', 'crime-points', (e) => showPopup(e))
-
-      // Change cursor on hover for crime points
-      map.current.on('mouseenter', 'crime-points', () => {
-        map.current.getCanvas().style.cursor = 'pointer'
-      })
-      map.current.on('mouseleave', 'crime-points', () => {
-        map.current.getCanvas().style.cursor = ''
-      })
-    })
-
-    return () => {
-      if (map.current) {
-        map.current.remove()
-      }
-    }
-  }, [crimeData])
-
-  // Add hotspot visualization when analytics data updates
-  useEffect(() => {
-    if (!map.current || analytics.hotspots.length === 0) return
-
-    // Wait for map to be loaded
-    if (!map.current.isStyleLoaded()) return
-
-    // Remove existing hotspot layers if any
-    if (map.current.getLayer('hotspot-circles')) {
-      map.current.removeLayer('hotspot-circles')
-    }
-    if (map.current.getSource('hotspots')) {
-      map.current.removeSource('hotspots')
-    }
-
-    // Add hotspots as a source
-    map.current.addSource('hotspots', {
-      type: 'geojson',
-      data: {
-        type: 'FeatureCollection',
-        features: analytics.hotspots.map(hotspot => ({
-          type: 'Feature',
-          geometry: {
-            type: 'Point',
-            coordinates: [hotspot.longitude, hotspot.latitude]
-          },
-          properties: {
-            location: hotspot.location,
-            risk_score: hotspot.risk_score,
-            crime_count: hotspot.crime_count,
-            radius_km: hotspot.radius_km || 1.5
-          }
-        }))
-      }
-    })
-
-    // Add hotspot visualization layer
-    map.current.addLayer({
-      id: 'hotspot-circles',
-      type: 'circle',
-      source: 'hotspots',
-      paint: {
-        'circle-radius': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          8, 15,
-          12, 25,
-          15, 40
-        ],
-        'circle-color': [
-          'interpolate',
-          ['linear'],
-          ['get', 'risk_score'],
-          0, '#fbbf24',
-          50, '#f97316',
-          70, '#ef4444',
-          100, '#991b1b'
-        ],
-        'circle-opacity': 0.2,
-        'circle-stroke-width': 3,
-        'circle-stroke-color': [
-          'interpolate',
-          ['linear'],
-          ['get', 'risk_score'],
-          0, '#fbbf24',
-          50, '#f97316',
-          70, '#ef4444',
-          100, '#991b1b'
-        ],
-        'circle-stroke-opacity': 0.6
-      }
-    })
-
-    // Add popup for hotspots
-    map.current.on('click', 'hotspot-circles', (e) => {
-      const properties = e.features[0].properties
-      const coordinates = e.features[0].geometry.coordinates.slice()
-
-      const popup = new mapboxgl.Popup()
-        .setLngLat(coordinates)
-        .setHTML(`
-          <div style="padding: 12px; background: rgba(0,0,0,0.95); color: #fff; border-radius: 8px;">
-            <h4 style="margin: 0 0 8px 0; color: #fff; font-size: 14px; font-weight: 600;">
-              Hotspot: ${properties.location}
-            </h4>
-            <p style="margin: 4px 0; font-size: 12px; color: #d1d5db;">
-              <strong>Risk Score:</strong> 
-              <span style="color: ${
-                properties.risk_score >= 70 ? '#ef4444' : 
-                properties.risk_score >= 50 ? '#f97316' : '#fbbf24'
-              }; font-weight: 600;">
-                ${Math.round(properties.risk_score)}/100
-              </span>
-            </p>
-            <p style="margin: 4px 0; font-size: 12px; color: #d1d5db;">
-              <strong>Crimes:</strong> ${properties.crime_count}
-            </p>
-            <p style="margin: 4px 0; font-size: 12px; color: #d1d5db;">
-              <strong>Coverage:</strong> ${properties.radius_km}km radius
-            </p>
-          </div>
-        `)
-        .addTo(map.current)
-    })
-
-    map.current.on('mouseenter', 'hotspot-circles', () => {
-      map.current.getCanvas().style.cursor = 'pointer'
-    })
-
-    map.current.on('mouseleave', 'hotspot-circles', () => {
-      map.current.getCanvas().style.cursor = ''
-    })
-
-  }, [analytics.hotspots])
-
-  const showPopup = (e) => {
-    const coordinates = e.features[0].geometry.coordinates.slice()
-    const properties = e.features[0].properties
-
-    // Create popup HTML with image and news article details
-    const popupHTML = `
-      <div class="popup-content" style="max-width: 320px; font-family: Arial, sans-serif;">
-        ${properties.image_url ? `
-          <img 
-            src="${properties.image_url}" 
-            alt="Crime scene" 
-            style="width: 100%; height: 180px; object-fit: cover; border-radius: 8px; margin-bottom: 12px;"
-            onerror="this.style.display='none'"
-          />
-        ` : ''}
-        
-        <h3 style="margin: 0 0 12px 0; font-size: 16px; color: #ffffff; line-height: 1.4; font-weight: 600;">
-          ${properties.title || 'Crime Incident'}
-        </h3>
-        
-        <div style="margin-bottom: 10px; padding: 12px; background: rgba(255, 255, 255, 0.05); border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);">
-          <p style="margin: 6px 0; font-size: 13px; color: #d1d5db; display: flex; justify-content: space-between;">
-            <strong style="color: #9ca3af;">Crime Type</strong>
-            <span style="color: #f87171; font-weight: 500;">${properties.crime_type || 'N/A'}</span>
-          </p>
-          <p style="margin: 6px 0; font-size: 13px; color: #d1d5db; display: flex; justify-content: space-between;">
-            <strong style="color: #9ca3af;">Severity</strong>
-            <span style="color: ${
-              properties.severity === 'Critical' ? '#ef4444' : 
-              properties.severity === 'High' ? '#f97316' : 
-              properties.severity === 'Medium' ? '#fbbf24' : '#22c55e'
-            }; font-weight: 600;">${properties.severity || 'N/A'}</span>
-          </p>
-          <p style="margin: 6px 0; font-size: 13px; color: #d1d5db; display: flex; justify-content: space-between;">
-            <strong style="color: #9ca3af;">Location</strong>
-            <span style="color: #e5e7eb;">${properties.location || 'N/A'}</span>
-          </p>
-          <p style="margin: 6px 0; font-size: 13px; color: #d1d5db; display: flex; justify-content: space-between;">
-            <strong style="color: #9ca3af;">Date</strong>
-            <span style="color: #e5e7eb;">${properties.date || 'N/A'}</span>
-          </p>
-          ${properties.source ? `
-            <p style="margin: 6px 0; font-size: 12px; color: #9ca3af; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.05);">
-              <strong>Source:</strong> ${properties.source}
-            </p>
-          ` : ''}
-        </div>
-        
-        ${properties.description ? `
-          <p style="margin: 10px 0; font-size: 12px; color: #9ca3af; line-height: 1.6; max-height: 80px; overflow-y: auto;">
-            ${properties.description.substring(0, 200)}${properties.description.length > 200 ? '...' : ''}
-          </p>
-        ` : ''}
-        
-        ${properties.news_url ? `
-          <a 
-            href="${properties.news_url}" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            style="
-              display: inline-flex;
-              align-items: center;
-              gap: 6px;
-              margin-top: 12px; 
-              padding: 10px 16px; 
-              background: rgba(59, 130, 246, 0.2);
-              color: #60a5fa; 
-              text-decoration: none; 
-              border-radius: 8px; 
-              font-size: 13px;
-              font-weight: 500;
-              transition: all 0.3s;
-              border: 1px solid rgba(59, 130, 246, 0.3);
-            "
-            onmouseover="this.style.background='rgba(59, 130, 246, 0.3)'; this.style.borderColor='rgba(59, 130, 246, 0.5)'"
-            onmouseout="this.style.background='rgba(59, 130, 246, 0.2)'; this.style.borderColor='rgba(59, 130, 246, 0.3)'"
-          >
-            Read Full Article
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-              <polyline points="15 3 21 3 21 9"></polyline>
-              <line x1="10" y1="14" x2="21" y2="3"></line>
-            </svg>
-          </a>
-        ` : ''}
-      </div>
-    `
-
-    new mapboxgl.Popup({ maxWidth: '340px' })
-      .setLngLat(coordinates)
-      .setHTML(popupHTML)
-      .addTo(map.current)
-  }
-
-  if (loading) {
-    return (
-      <div className="loading-container">
-        <div>Loading crime data from Mumbai...</div>
-      </div>
-    )
-  }
+  }, [lastFetchTime])
 
   return (
-    <div style={{ position: 'relative', height: '100vh', width: '100%' }}>
-      {/* Stats Panel */}
-      <div className="stats-panel">
-        <h3>
-          <Activity size={22} />
-          Crime Analytics
-        </h3>
-        
-        <div className="stat-box">
-          <p style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9ca3af', fontSize: '13px' }}>
-              <Shield size={15} />
-              Total Incidents
-            </span>
-            <strong style={{ fontSize: '18px', color: '#ffffff' }}>{crimeData.length}</strong>
-          </p>
-          <p style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: 0 }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9ca3af', fontSize: '13px' }}>
-              <Layers size={15} />
-              Map Style
-            </span>
-            <strong style={{ fontSize: '14px', color: '#ffffff' }}>{mapStyle.charAt(0).toUpperCase() + mapStyle.slice(1)}</strong>
-          </p>
-        </div>
-        
-        <div className="severity-legend">
-          <h4>
-            <TrendingUp size={15} />
-            Heatmap Intensity
-          </h4>
-          
-          <div className="heatmap-gradient"></div>
-          
-          <div className="gradient-labels">
-            <span>Safe</span>
-            <span>Low</span>
-            <span>High</span>
-            <span>Critical</span>
-          </div>
-          
-          <div className="section-divider"></div>
-          
-          <h4>
-            <MapPin size={15} />
-            Incident Markers
-          </h4>
-          
-          <div className="severity-item">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div className="severity-dot" style={{ 
-                backgroundColor: '#22c55e',
-                color: '#22c55e'
-              }}></div>
-              <span>Low Risk</span>
-            </div>
-            {stats?.severity_levels.find(s => s._id === 'Low') && (
-              <strong style={{ fontSize: '13px' }}>{stats.severity_levels.find(s => s._id === 'Low').count}</strong>
-            )}
-          </div>
-          <div className="severity-item">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div className="severity-dot" style={{ 
-                backgroundColor: '#fbbf24',
-                color: '#fbbf24'
-              }}></div>
-              <span>Medium Risk</span>
-            </div>
-            {stats?.severity_levels.find(s => s._id === 'Medium') && (
-              <strong style={{ fontSize: '13px' }}>{stats.severity_levels.find(s => s._id === 'Medium').count}</strong>
-            )}
-          </div>
-          <div className="severity-item">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div className="severity-dot" style={{ 
-                backgroundColor: '#f97316',
-                color: '#f97316'
-              }}></div>
-              <span>High Risk</span>
-            </div>
-            {stats?.severity_levels.find(s => s._id === 'High') && (
-              <strong style={{ fontSize: '13px' }}>{stats.severity_levels.find(s => s._id === 'High').count}</strong>
-            )}
-          </div>
-          <div className="severity-item">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div className="severity-dot" style={{ 
-                backgroundColor: '#ef4444',
-                color: '#ef4444'
-              }}></div>
-              <span>Critical Risk</span>
-            </div>
-            {stats?.severity_levels.find(s => s._id === 'Critical') && (
-              <strong style={{ fontSize: '13px' }}>{stats.severity_levels.find(s => s._id === 'Critical').count}</strong>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Analytics Insights Panel */}
-      <div style={{
-        position: 'absolute',
-        top: '20px',
-        right: '20px',
-        background: 'rgba(0, 0, 0, 0.92)',
-        backdropFilter: 'blur(20px)',
-        padding: '20px',
-        borderRadius: '16px',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.8)',
-        border: '1px solid rgba(255, 255, 255, 0.15)',
-        maxWidth: '350px',
-        maxHeight: '80vh',
-        overflowY: 'auto',
-        zIndex: 1
-      }}>
-        <h3 style={{
-          margin: '0 0 16px 0',
-          color:  '#ffffff',
-          fontSize: '18px',
-          fontWeight: '700',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          paddingBottom: '12px',
-          borderBottom: '2px solid rgba(255, 255, 255, 0.1)'
-        }}>
-          <Activity size={20} />
-          AI Insights
-        </h3>
-
-        {/* Hotspots Section */}
-        {analytics.hotspots.length > 0 && (
-          <div style={{ marginBottom: '20px' }}>
-            <h4 style={{
-              color: '#e2e8f0',
-              fontSize: '13px',
-              fontWeight: '600',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              marginBottom: '10px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}>
-              <AlertTriangle size={14} color="#ef4444" />
-              Top {analytics.hotspots.length} Hotspots
-            </h4>
-            {analytics.hotspots.slice(0, 5).map((hotspot, idx) => (
-              <div key={idx} style={{
-                background: 'rgba(255, 255, 255, 0.03)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                borderRadius: '8px',
-                padding: '10px',
-                marginBottom: '8px'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                  <strong style={{ color: '#ffffff', fontSize: '13px' }}>{hotspot.location}</strong>
-                  <span style={{
-                    background: hotspot.risk_score >= 70 ? '#ef4444' : hotspot.risk_score >= 50 ? '#f97316' : '#fbbf24',
-                    color: '#000',
-                    padding: '2px 8px',
-                    borderRadius: '12px',
-                    fontSize: '11px',
-                    fontWeight: '600'
-                  }}>
-                    {Math.round(hotspot.risk_score)}
-                  </span>
-                </div>
-                <div style={{ fontSize: '11px', color: '#9ca3af' }}>
-                  {hotspot.crime_count} crimes • {hotspot.critical_crimes} critical
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Time Patterns */}
-        {analytics.patterns && (
-          <div style={{ marginBottom: '20px' }}>
-            <h4 style={{
-              color: '#e2e8f0',
-              fontSize: '13px',
-              fontWeight: '600',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              marginBottom: '10px'
-            }}>
-              Peak Crime Times
-            </h4>
-            <div style={{
-              background: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              borderRadius: '8px',
-              padding: '12px'
-            }}>
-              <div style={{ marginBottom: '8px' }}>
-                <span style={{ color: '#9ca3af', fontSize: '12px' }}>Peak Hour:</span>
-                <strong style={{ color: '#ffffff', fontSize: '14px', marginLeft: '8px' }}>
-                  {analytics.patterns.peak_hour}:00 ({analytics.patterns.peak_hour_count} crimes)
-                </strong>
-              </div>
-              <div>
-                <span style={{ color: '#9ca3af', fontSize: '12px' }}>Peak Day:</span>
-                <strong style={{ color: '#ffffff', fontSize: '14px', marginLeft: '8px' }}>
-                  {analytics.patterns.peak_day} ({analytics.patterns.peak_day_count} crimes)
-                </strong>
-              </div>
-              {analytics.patterns.high_risk_hours && analytics.patterns.high_risk_hours.length > 0 && (
-                <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                  <span style={{ color: '#9ca3af', fontSize: '11px' }}>High-risk hours:</span>
-                  <div style={{ color: '#fbbf24', fontSize: '12px', marginTop: '4px' }}>
-                    {analytics.patterns.high_risk_hours.join(':00, ')}:00
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Trends */}
-        {analytics.trends && (
-          <div style={{ marginBottom: '20px' }}>
-            <h4 style={{
-              color: '#e2e8f0',
-              fontSize: '13px',
-              fontWeight: '600',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              marginBottom: '10px'
-            }}>
-              30-Day Trend
-            </h4>
-            <div style={{
-              background: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              borderRadius: '8px',
-              padding: '12px'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ color: '#9ca3af', fontSize: '12px' }}>Total:</span>
-                <strong style={{ color: '#ffffff', fontSize: '14px' }}>{analytics.trends.total_crimes}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ color: '#9ca3af', fontSize: '12px' }}>Trend:</span>
-                <strong style={{ 
-                  color: analytics.trends.trend === 'increasing' ? '#ef4444' : '#22c55e',
-                  fontSize: '14px'
-                }}>
-                  {analytics.trends.trend === 'increasing' ? '↗' : '↘'} {analytics.trends.trend} ({Math.abs(analytics.trends.change_percent)}%)
-                </strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#9ca3af', fontSize: '12px' }}>Avg/day:</span>
-                <strong style={{ color: '#ffffff', fontSize: '14px' }}>{analytics.trends.average_per_day}</strong>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Patrol Routes */}
-        {analytics.patrolRoutes.length > 0 && (
-          <div>
-            <h4 style={{
-              color: '#e2e8f0',
-              fontSize: '13px',
-              fontWeight: '600',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              marginBottom: '10px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}>
-              <MapPin size={14} color="#60a5fa" />
-              Patrol Priorities
-            </h4>
-            {analytics.patrolRoutes.map((route, idx) => (
-              <div key={idx} style={{
-                background: 'rgba(59, 130, 246, 0.1)',
-                border: '1px solid rgba(59, 130, 246, 0.2)',
-                borderRadius: '8px',
-                padding: '10px',
-                marginBottom: '8px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <span style={{
-                    background: '#60a5fa',
-                    color: '#000',
-                    width: '20px',
-                    height: '20px',
-                    borderRadius: '50%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '11px',
-                    fontWeight: '700'
-                  }}>
-                    {route.priority}
-                  </span>
-                  <strong style={{ color: '#ffffff', fontSize: '13px' }}>{route.location}</strong>
-                </div>
-                <div style={{ fontSize: '11px', color: '#9ca3af', paddingLeft: '28px' }}>
-                  Risk {route.risk_score} • {route.crime_count} crimes
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Map Container */}
-      <div ref={mapContainer} className="map-container" />
-    </div>
+    <Router>
+      <Header user={user} onLogout={handleLogout} />
+      <Routes>
+        <Route 
+          path="/auth" 
+          element={
+            isAuthenticated ? <Navigate to="/" replace /> : <AuthPage onLogin={handleLogin} />
+          } 
+        />
+        <Route 
+          path="/login" 
+          element={<Navigate to="/auth" replace />} 
+        />
+        <Route 
+          path="/signup" 
+          element={<Navigate to="/auth" replace />} 
+        />
+        <Route 
+          path="/" 
+          element={
+            <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <MapView 
+                crimeData={crimeData}
+                stats={stats}
+                loading={loading}
+                selectedCrimeTypes={selectedCrimeTypes}
+                availableCrimeTypes={availableCrimeTypes}
+                toggleCrimeType={toggleCrimeType}
+                selectAllCrimeTypes={selectAllCrimeTypes}
+                deselectAllCrimeTypes={deselectAllCrimeTypes}
+              />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/analytics" 
+          element={
+            <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <AnalyticsPage 
+                crimeData={crimeData}
+                analytics={analytics}
+                filteredCrimeData={filteredCrimeData}
+              />
+            </ProtectedRoute>
+          } 
+        />
+      </Routes>
+    </Router>
   )
 }
 

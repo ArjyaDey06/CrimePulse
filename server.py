@@ -1,10 +1,12 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from flask_bcrypt import Bcrypt
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 import pymongo
 import urllib.parse
 import os
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timedelta
 from crime_analytics import CrimeAnalytics
 
 # Load environment variables
@@ -12,6 +14,13 @@ load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
+
+# JWT Configuration
+app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-secret-key-change-this-in-production')
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
+
+bcrypt = Bcrypt(app)
+jwt = JWTManager(app)
 
 # MongoDB connection
 MONGODB_URI = os.getenv("MONGO_URI")
@@ -22,6 +31,149 @@ client = pymongo.MongoClient(MONGODB_URI)
 db = client["fir_data"]
 collection = db["firs"]
 crime_news_collection = db["crime_news"]
+users_collection = db["users"]
+
+# Authentication Routes
+@app.route('/api/auth/register', methods=['POST'])
+def register():
+    """Register a new user"""
+    try:
+        data = request.get_json()
+        
+        # Validate input
+        if not data or not data.get('email') or not data.get('password'):
+            return jsonify({
+                'success': False,
+                'error': 'Email and password are required'
+            }), 400
+        
+        email = data['email'].lower().strip()
+        password = data['password']
+        name = data.get('name', '').strip()
+        
+        # Check if user already exists
+        if users_collection.find_one({'email': email}):
+            return jsonify({
+                'success': False,
+                'error': 'Email already registered'
+            }), 409
+        
+        # Hash password
+        hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+        
+        # Create user document
+        user = {
+            'email': email,
+            'password': hashed_password,
+            'name': name,
+            'created_at': datetime.utcnow(),
+            'updated_at': datetime.utcnow()
+        }
+        
+        # Insert user
+        result = users_collection.insert_one(user)
+        
+        # Create access token
+        access_token = create_access_token(identity=email)
+        
+        return jsonify({
+            'success': True,
+            'message': 'User registered successfully',
+            'token': access_token,
+            'user': {
+                'email': email,
+                'name': name
+            }
+        }), 201
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """Login user"""
+    try:
+        data = request.get_json()
+        
+        # Validate input
+        if not data or not data.get('email') or not data.get('password'):
+            return jsonify({
+                'success': False,
+                'error': 'Email and password are required'
+            }), 400
+        
+        email = data['email'].lower().strip()
+        password = data['password']
+        
+        # Find user
+        user = users_collection.find_one({'email': email})
+        
+        if not user:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid email or password'
+            }), 401
+        
+        # Check password
+        if not bcrypt.check_password_hash(user['password'], password):
+            return jsonify({
+                'success': False,
+                'error': 'Invalid email or password'
+            }), 401
+        
+        # Create access token
+        access_token = create_access_token(identity=email)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Login successful',
+            'token': access_token,
+            'user': {
+                'email': user['email'],
+                'name': user.get('name', '')
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/auth/me', methods=['GET'])
+@jwt_required()
+def get_current_user():
+    """Get current user profile"""
+    try:
+        current_user_email = get_jwt_identity()
+        user = users_collection.find_one(
+            {'email': current_user_email},
+            {'password': 0, '_id': 0}
+        )
+        
+        if not user:
+            return jsonify({
+                'success': False,
+                'error': 'User not found'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'user': {
+                'email': user['email'],
+                'name': user.get('name', ''),
+                'created_at': user.get('created_at')
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 @app.route('/api/crime-data', methods=['GET'])
 def get_crime_data():
