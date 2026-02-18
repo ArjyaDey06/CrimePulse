@@ -26,6 +26,7 @@
     "deck.gl": "^8.9.15",
     "dotenv": "^17.3.1",
     "express": "^4.18.2",
+    "gsap": "^3.14.2",
     "lucide-react": "^0.564.0",
     "mapbox-gl": "^3.18.1",
     "maplibre-gl": "^5.18.0",

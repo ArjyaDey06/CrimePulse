@@ -39,8 +39,8 @@ function Login({ onLogin }) {
         // Call onLogin callback
         onLogin(response.data.user, response.data.token)
         
-        // Redirect to home
-        navigate('/')
+        // Redirect to map
+        navigate('/map')
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed. Please try again.')

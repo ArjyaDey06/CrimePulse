@@ -55,8 +55,8 @@ function Signup({ onLogin }) {
         // Call onLogin callback
         onLogin(response.data.user, response.data.token)
         
-        // Redirect to home
-        navigate('/')
+        // Redirect to map
+        navigate('/map')
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Registration failed. Please try again.')
