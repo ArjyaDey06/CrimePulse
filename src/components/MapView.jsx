@@ -4,8 +4,7 @@ import mapboxgl from 'mapbox-gl'
 import { Activity, TrendingUp, Shield, Layers, MapPin, BarChart3, Filter } from 'lucide-react'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
-const MAPBOX_TOKEN = 'pk.eyJ1IjoiYXJqeWEyNCIsImEiOiJjbWw1ZG02MjkwMjl3M2ZyMGdpM3l3anZqIn0.amXOnuDpokBI82nJKfYUlw'
-mapboxgl.accessToken = MAPBOX_TOKEN
+mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_KEY
 
 function MapView({ crimeData, stats, loading, selectedCrimeTypes, availableCrimeTypes, toggleCrimeType, selectAllCrimeTypes, deselectAllCrimeTypes }) {
   const mapContainer = useRef(null)
