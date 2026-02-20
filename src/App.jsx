@@ -161,11 +161,12 @@ function App() {
 
   const fetchAnalytics = async () => {
     try {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
       const [hotspotsRes, patternsRes, trendsRes, patrolRes] = await Promise.all([
-        axios.get('http://localhost:5000/api/analytics/hotspots'),
-        axios.get('http://localhost:5000/api/analytics/patterns'),
-        axios.get('http://localhost:5000/api/analytics/trends?days=30'),
-        axios.get('http://localhost:5000/api/analytics/patrol-routes?officers=5')
+        axios.get(`${API_URL}/api/analytics/hotspots`),
+        axios.get(`${API_URL}/api/analytics/patterns`),
+        axios.get(`${API_URL}/api/analytics/trends?days=30`),
+        axios.get(`${API_URL}/api/analytics/patrol-routes?officers=5`)
       ])
       
       setAnalytics({
@@ -184,9 +185,10 @@ function App() {
     const fetchData = async () => {
       try {
         console.log('Fetching crime data...')
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
         const [crimeResponse, statsResponse] = await Promise.all([
-          axios.get('http://localhost:5000/api/crime-data'),
-          axios.get('http://localhost:5000/api/stats')
+          axios.get(`${API_URL}/api/crime-data`),
+          axios.get(`${API_URL}/api/stats`)
         ])
         
         console.log('Crime data received:', crimeResponse.data.data.length, 'crimes')
@@ -210,7 +212,8 @@ function App() {
   useEffect(() => {
     const pollInterval = setInterval(async () => {
       try {
-        const response = await axios.get(`http://localhost:5000/api/crime-data/new?since=${lastFetchTime}`)
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+        const response = await axios.get(`${API_URL}/api/crime-data/new?since=${lastFetchTime}`)
         
         if (response.data.success && response.data.data.length > 0) {
           const newCrimes = response.data.data
@@ -218,7 +221,7 @@ function App() {
           
           setCrimeData(prev => [...newCrimes, ...prev])
           
-          const statsResponse = await axios.get('http://localhost:5000/api/stats')
+          const statsResponse = await axios.get(`${API_URL}/api/stats`)
           setStats(statsResponse.data)
           
           fetchAnalytics()

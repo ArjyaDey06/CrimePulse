@@ -13,7 +13,7 @@ from crime_analytics import CrimeAnalytics
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": ["https://crimepulse-virid.vercel.app", "http://localhost:5173", "http://localhost:5000"]}})
 
 # JWT Configuration
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-secret-key-change-this-in-production')
