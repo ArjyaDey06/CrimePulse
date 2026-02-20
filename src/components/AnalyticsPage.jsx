@@ -1,174 +1,204 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, AlertTriangle, MapPin, ChevronLeft, TrendingUp } from 'lucide-react'
+import { Activity, AlertTriangle, MapPin, ChevronLeft, TrendingUp, TrendingDown, Menu, X, Shield } from 'lucide-react'
+
+const card = {
+  background: '#111111',
+  border: '1px solid rgba(255,255,255,0.07)',
+  borderRadius: '16px',
+  boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+}
+
+const innerCard = {
+  background: 'rgba(255,255,255,0.03)',
+  border: '1px solid rgba(255,255,255,0.06)',
+  borderRadius: '10px',
+}
+
+const label = {
+  fontSize: '11px',
+  fontWeight: '600',
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: 'rgba(255,255,255,0.3)',
+  marginBottom: '4px',
+}
+
+function StatCard({ title, value, color = '#e5e5e5' }) {
+  return (
+    <div style={{ ...card, padding: '24px' }}>
+      <p style={label}>{title}</p>
+      <p style={{ fontSize: '36px', fontWeight: '700', color, lineHeight: 1.1, letterSpacing: '-0.03em' }}>
+        {value}
+      </p>
+    </div>
+  )
+}
+
+function RiskBadge({ score }) {
+  const color = score >= 70 ? '#ef4444' : score >= 50 ? '#f97316' : '#fbbf24'
+  const bg   = score >= 70 ? 'rgba(239,68,68,0.12)' : score >= 50 ? 'rgba(249,115,22,0.12)' : 'rgba(251,191,36,0.12)'
+  return (
+    <span style={{
+      fontSize: '11px', fontWeight: '700', letterSpacing: '0.06em',
+      textTransform: 'uppercase', color, background: bg,
+      border: `1px solid ${color}44`, padding: '3px 10px', borderRadius: '999px',
+    }}>
+      Risk {Math.round(score)}
+    </span>
+  )
+}
+
+function SectionHeader({ icon: Icon, iconColor = 'rgba(255,255,255,0.5)', title }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+      <div style={{
+        padding: '8px', borderRadius: '10px',
+        background: 'rgba(255,255,255,0.05)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Icon size={16} color={iconColor} />
+      </div>
+      <h2 style={{ margin: 0, fontSize: '15px', fontWeight: '600', color: '#e5e5e5', letterSpacing: '-0.01em' }}>
+        {title}
+      </h2>
+    </div>
+  )
+}
 
 function AnalyticsPage({ crimeData, analytics, filteredCrimeData }) {
+  const [showDrawer, setShowDrawer] = useState(false)
+
   return (
-    <div style={{ 
-      minHeight: '100vh', 
-      background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
-      padding: '40px 20px',
-      color: '#ffffff'
-    }}>
-      <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+    <div style={{ minHeight: '100vh', background: '#0a0a0a', padding: '32px 16px 128px', color: '#e5e5e5' }}>
+
+      {/* Mobile Drawer Backdrop */}
+      {showDrawer && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', zIndex: 9997 }}
+          className="md:hidden"
+          onClick={() => setShowDrawer(false)}
+        />
+      )}
+
+      {/* Mobile Toggle FAB */}
+      <button
+        className="md:hidden"
+        onClick={() => setShowDrawer(!showDrawer)}
+        aria-label="Toggle Analytics"
+        style={{
+          position: 'fixed', bottom: '96px', right: '20px', zIndex: 9999,
+          width: '52px', height: '52px', borderRadius: '14px',
+          background: showDrawer ? '#1a1a1a' : '#1f1f1f',
+          border: '1px solid rgba(255,255,255,0.12)',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+          color: 'rgba(255,255,255,0.8)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', transition: 'all 0.2s',
+        }}
+      >
+        {showDrawer ? <X size={20} /> : <Menu size={20} />}
+      </button>
+
+      <div style={{ maxWidth: '1120px', margin: '0 auto' }}>
+
         {/* Header */}
-        <div style={{ marginBottom: '40px' }}>
-          <Link 
-            to="/"
+        <div style={{ marginBottom: '36px' }}>
+          <Link
+            to="/map"
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 16px',
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              borderRadius: '10px',
-              color: '#60a5fa',
-              textDecoration: 'none',
-              fontWeight: '600',
-              fontSize: '14px',
-              marginBottom: '20px',
-              transition: 'all 0.3s'
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '7px 14px', borderRadius: '10px',
+              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+              color: 'rgba(255,255,255,0.5)', fontSize: '13px', fontWeight: '500',
+              textDecoration: 'none', marginBottom: '24px',
+              transition: 'all 0.15s',
             }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
-              e.currentTarget.style.transform = 'translateX(-4px)'
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'
-              e.currentTarget.style.transform = 'translateX(0)'
-            }}
+            onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#e5e5e5' }}
+            onMouseOut={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = 'rgba(255,255,255,0.5)' }}
           >
-            <ChevronLeft size={18} />
+            <ChevronLeft size={15} />
             Back to Map
           </Link>
-          
-          <h1 style={{
-            fontSize: '48px',
-            fontWeight: '800',
-            margin: '20px 0 10px 0',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: '',
-            backgroundClip: 'text'
-          }}>
-            Crime Analytics & Insights
+
+          <h1 style={{ margin: '0 0 6px', fontSize: '32px', fontWeight: '700', color: '#f1f1f1', letterSpacing: '-0.03em' }}>
+            Crime Analytics
           </h1>
-          <p style={{ fontSize: '18px', color: '#94a3b8', margin: 0 }}>
-            Advanced crime data analysis and pattern detection
+          <p style={{ margin: 0, fontSize: '14px', color: 'rgba(255,255,255,0.35)' }}>
+            Pattern detection and risk intelligence
           </p>
         </div>
 
-        {/* Stats Summary Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '30px' }}>
-          <div style={{
-            background: 'rgba(0, 0, 0, 0.5)',
-            backdropFilter: 'blur(20px)',
-            padding: '24px',
-            borderRadius: '16px',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-          }}>
-            <div style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px' }}>Total Crimes</div>
-            <div style={{ fontSize: '36px', fontWeight: '700', color: '#ffffff' }}>{crimeData.length}</div>
-          </div>
-          <div style={{
-            background: 'rgba(0, 0, 0, 0.5)',
-            backdropFilter: 'blur(20px)',
-            padding: '24px',
-            borderRadius: '16px',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-          }}>
-            <div style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px' }}>Filtered Crimes</div>
-            <div style={{ fontSize: '36px', fontWeight: '700', color: '#60a5fa' }}>{filteredCrimeData.length}</div>
-          </div>
-          <div style={{
-            background: 'rgba(0, 0, 0, 0.5)',
-            backdropFilter: 'blur(20px)',
-            padding: '24px',
-            borderRadius: '16px',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-          }}>
-            <div style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px' }}>Hotspots</div>
-            <div style={{ fontSize: '36px', fontWeight: '700', color: '#ef4444' }}>{analytics.hotspots?.length || 0}</div>
-          </div>
+        {/* Summary Stats */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '16px' }}>
+          <StatCard title="Total Crimes"    value={crimeData.length}            color="#e5e5e5" />
+          <StatCard title="Filtered Crimes" value={filteredCrimeData.length}    color="#e5e5e5" />
+          <StatCard title="Hotspots"        value={analytics.hotspots?.length || 0} color="#ef4444" />
         </div>
 
-        {/* Analytics Panels */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
-          {/* Hotspots Section */}
-          {analytics.hotspots && analytics.hotspots.length > 0 && (
-            <div style={{
-              background: 'rgba(0, 0, 0, 0.5)',
-              backdropFilter: 'blur(20px)',
-              padding: '30px',
-              borderRadius: '20px',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
-            }}>
-              <h2 style={{
-                fontSize: '24px',
-                fontWeight: '700',
-                margin: '0 0 24px 0',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px'
-              }}>
-                <AlertTriangle size={28} color="#ef4444" />
-                Crime Hotspots
-              </h2>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
+        {/* Main Content */}
+        <div className={`analytics-cards-container ${showDrawer ? 'analytics-drawer-open' : ''}`}
+          style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+          {/* Mobile close */}
+          <button
+            className="md:hidden"
+            onClick={() => setShowDrawer(false)}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              width: '100%', padding: '14px', borderRadius: '12px',
+              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+              color: 'rgba(255,255,255,0.5)', fontSize: '13px', fontWeight: '500', cursor: 'pointer',
+            }}
+          >
+            <X size={15} /> Close
+          </button>
+
+          {/* Hotspots */}
+          {analytics.hotspots?.length > 0 && (
+            <div style={{ ...card, padding: '24px' }}>
+              <SectionHeader icon={AlertTriangle} iconColor="#ef4444" title="Crime Hotspots" />
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
                 {analytics.hotspots.map((hotspot, idx) => (
-                  <div key={idx} style={{
-                    background: 'rgba(255, 255, 255, 0.03)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    borderRadius: '12px',
-                    padding: '20px',
-                    transition: 'all 0.3s'
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)'
-                    e.currentTarget.style.transform = 'translateX(8px)'
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)'
-                    e.currentTarget.style.transform = 'translateX(0)'
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div
+                    key={idx}
+                    style={{ ...innerCard, padding: '16px', transition: 'all 0.2s', cursor: 'default' }}
+                    onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)' }}
+                    onMouseOut={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)' }}
+                  >
+                    {/* Row 1: rank + name + badge */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <span style={{
-                          fontSize: '20px',
-                          fontWeight: '700',
-                          color: '#60a5fa',
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: '8px',
-                          background: 'rgba(96, 165, 250, 0.2)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
+                          fontSize: '12px', fontWeight: '700', color: 'rgba(255,255,255,0.4)',
+                          width: '26px', height: '26px', borderRadius: '8px',
+                          background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
                         }}>
-                          #{idx + 1}
+                          {idx + 1}
                         </span>
-                        <strong style={{ fontSize: '18px' }}>{hotspot.location}</strong>
+                        <span style={{ fontSize: '14px', fontWeight: '600', color: '#e5e5e5' }}>
+                          {hotspot.location}
+                        </span>
                       </div>
-                      <span style={{
-                        background: hotspot.risk_score >= 70 ? '#ef4444' : hotspot.risk_score >= 50 ? '#f97316' : '#fbbf24',
-                        color: '#000',
-                        padding: '6px 16px',
-                        borderRadius: '20px',
-                        fontSize: '14px',
-                        fontWeight: '700'
-                      }}>
-                        Risk {Math.round(hotspot.risk_score)}
-                      </span>
+                      <RiskBadge score={hotspot.risk_score} />
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '16px' }}>
-                      <div style={{ padding: '12px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px' }}>
-                        <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '4px' }}>Total Crimes</div>
-                        <div style={{ fontSize: '20px', fontWeight: '700', color: '#60a5fa' }}>{hotspot.crime_count}</div>
+
+                    {/* Row 2: stats */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <div style={{ ...innerCard, padding: '10px 12px' }}>
+                        <p style={label}>Crimes</p>
+                        <p style={{ margin: 0, fontSize: '20px', fontWeight: '700', color: '#e5e5e5' }}>
+                          {hotspot.crime_count}
+                        </p>
                       </div>
-                      <div style={{ padding: '12px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px' }}>
-                        <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '4px' }}>Critical Cases</div>
-                        <div style={{ fontSize: '20px', fontWeight: '700', color: '#ef4444' }}>{hotspot.critical_crimes}</div>
+                      <div style={{ ...innerCard, padding: '10px 12px' }}>
+                        <p style={label}>Critical</p>
+                        <p style={{ margin: 0, fontSize: '20px', fontWeight: '700', color: '#ef4444' }}>
+                          {hotspot.critical_crimes}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -177,141 +207,107 @@ function AnalyticsPage({ crimeData, analytics, filteredCrimeData }) {
             </div>
           )}
 
-          {/* Patterns & Trends Section */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-            {/* Time Patterns */}
+          {/* Patterns + Trends */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+
+            {/* Peak Times */}
             {analytics.patterns && (
-              <div style={{
-                background: 'rgba(0, 0, 0, 0.5)',
-                backdropFilter: 'blur(20px)',
-                padding: '24px',
-                borderRadius: '20px',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-              }}>
-                <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Activity size={20} />
-                  Peak Crime Times
-                </h3>
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '6px' }}>Peak Hour</div>
-                  <div style={{ fontSize: '24px', fontWeight: '700', color: '#60a5fa' }}>
-                    {analytics.patterns.peak_hour}:00
-                  </div>
-                  <div style={{ fontSize: '13px', color: '#9ca3af' }}>{analytics.patterns.peak_hour_count} crimes</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '6px' }}>Peak Day</div>
-                  <div style={{ fontSize: '20px', fontWeight: '700', color: '#a78bfa' }}>
-                    {analytics.patterns.peak_day}
-                  </div>
-                  <div style={{ fontSize: '13px', color: '#9ca3af' }}>{analytics.patterns.peak_day_count} crimes</div>
+              <div style={{ ...card, padding: '24px' }}>
+                <SectionHeader icon={Activity} title="Peak Crime Times" />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {[
+                    { sublabel: 'Peak Hour', value: `${analytics.patterns.peak_hour}:00`, sub: `${analytics.patterns.peak_hour_count} incidents`, color: '#e5e5e5' },
+                    { sublabel: 'Peak Day',  value: analytics.patterns.peak_day,           sub: `${analytics.patterns.peak_day_count} incidents`,  color: '#e5e5e5' },
+                  ].map(({ sublabel, value, sub, color }) => (
+                    <div key={sublabel} style={{ ...innerCard, padding: '14px 16px' }}>
+                      <p style={label}>{sublabel}</p>
+                      <p style={{ margin: '0 0 2px', fontSize: '22px', fontWeight: '700', color, letterSpacing: '-0.02em' }}>{value}</p>
+                      <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.3)' }}>{sub}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
 
-            {/* Trends */}
-            {analytics.trends && (
-              <div style={{
-                background: 'rgba(0, 0, 0, 0.5)',
-                backdropFilter: 'blur(20px)',
-                padding: '24px',
-                borderRadius: '20px',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-              }}>
-                <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <TrendingUp size={20} />
-                  30-Day Trend
-                </h3>
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '6px' }}>Total Crimes</div>
-                  <div style={{ fontSize: '32px', fontWeight: '700', color: '#ffffff' }}>
-                    {analytics.trends.total_crimes}
+            {/* 30-day Trend */}
+            {analytics.trends && (() => {
+              const up = analytics.trends.trend === 'increasing'
+              const trendColor = up ? '#ef4444' : '#4ade80'
+              const TrendIcon = up ? TrendingUp : TrendingDown
+              return (
+                <div style={{ ...card, padding: '24px' }}>
+                  <SectionHeader icon={TrendingUp} title="30-Day Trend" />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ ...innerCard, padding: '14px 16px' }}>
+                      <p style={label}>Total Crimes</p>
+                      <p style={{ margin: 0, fontSize: '32px', fontWeight: '700', color: '#e5e5e5', letterSpacing: '-0.03em' }}>
+                        {analytics.trends.total_crimes}
+                      </p>
+                    </div>
+                    <div style={{ ...innerCard, padding: '14px 16px', borderColor: `${trendColor}22` }}>
+                      <p style={label}>Direction</p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+                        <div style={{
+                          padding: '5px', borderRadius: '8px',
+                          background: up ? 'rgba(239,68,68,0.1)' : 'rgba(74,222,128,0.1)',
+                          display: 'flex',
+                        }}>
+                          <TrendIcon size={14} color={trendColor} />
+                        </div>
+                        <span style={{ fontSize: '16px', fontWeight: '700', color: trendColor, textTransform: 'capitalize' }}>
+                          {analytics.trends.trend}
+                        </span>
+                        <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.35)', fontWeight: '500' }}>
+                          {Math.abs(analytics.trends.change_percent)}%
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div style={{ marginBottom: '12px' }}>
-                  <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '6px' }}>Trend</div>
-                  <div style={{ 
-                    fontSize: '18px', 
-                    fontWeight: '700',
-                    color: analytics.trends.trend === 'increasing' ? '#ef4444' : '#22c55e',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
-                  }}>
-                    {analytics.trends.trend === 'increasing' ? '↗' : '↘'}
-                    {analytics.trends.trend} ({Math.abs(analytics.trends.change_percent)}%)
-                  </div>
-                </div>
-              </div>
-            )}
+              )
+            })()}
           </div>
 
-          {/* Patrol Routes */}
-          {analytics.patrolRoutes && analytics.patrolRoutes.length > 0 && (
-            <div style={{
-              background: 'rgba(0, 0, 0, 0.5)',
-              backdropFilter: 'blur(20px)',
-              padding: '30px',
-              borderRadius: '20px',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-            }}>
-              <h2 style={{
-                fontSize: '24px',
-                fontWeight: '700',
-                margin: '0 0 24px 0',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px'
-              }}>
-                <MapPin size={28} color="#60a5fa" />
-                Patrol Priority Zones
-              </h2>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+          {/* Patrol Priority Zones */}
+          {analytics.patrolRoutes?.length > 0 && (
+            <div style={{ ...card, padding: '24px' }}>
+              <SectionHeader icon={MapPin} title="Patrol Priority Zones" />
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
                 {analytics.patrolRoutes.map((route, idx) => (
                   <div key={idx} style={{
-                    background: 'rgba(59, 130, 246, 0.1)',
-                    border: '1px solid rgba(59, 130, 246, 0.2)',
-                    borderRadius: '12px',
-                    padding: '16px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    ...innerCard, padding: '14px 16px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    gap: '12px', transition: 'all 0.2s',
+                  }}
+                    onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
+                    onMouseOut={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <span style={{
-                        background: '#60a5fa',
-                        color: '#000',
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '50%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '16px',
-                        fontWeight: '700'
+                        width: '32px', height: '32px', borderRadius: '8px', flexShrink: 0,
+                        background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '13px', fontWeight: '700', color: 'rgba(255,255,255,0.6)',
                       }}>
                         {route.priority}
                       </span>
                       <div>
-                        <div style={{ fontSize: '16px', fontWeight: '600' }}>{route.location}</div>
-                        <div style={{ fontSize: '12px', color: '#9ca3af' }}>
+                        <p style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: '#e5e5e5' }}>
+                          {route.location}
+                        </p>
+                        <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.3)' }}>
                           {route.crime_count} crimes
-                        </div>
+                        </p>
                       </div>
                     </div>
-                    <div style={{
-                      fontSize: '14px',
-                      fontWeight: '600',
-                      color: '#60a5fa'
-                    }}>
-                      Risk {route.risk_score}
-                    </div>
+                    <RiskBadge score={route.risk_score} />
                   </div>
                 ))}
               </div>
             </div>
           )}
+
         </div>
       </div>
     </div>

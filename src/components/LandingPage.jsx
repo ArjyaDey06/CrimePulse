@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CrowdCanvas } from './ui/skiper-ui/skiper39'
 import { ArrowRight, MapPin, BarChart3, Shield } from 'lucide-react'
-
+ 
 // Component to handle font randomization for a specific word
 const RandomFontWord = ({ word }) => {
   const fonts = [
@@ -51,7 +51,7 @@ function LandingPage() {
               className="flex items-center gap-2 px-6 py-2.5 rounded-lg text-white font-medium text-sm transition-all duration-300 hover:opacity-90 hover:shadow-lg active:scale-95"
               style={{ backgroundColor: "#000" }}
             >
-              Login
+              Get Started
             </Link>
           </div>
         </div>

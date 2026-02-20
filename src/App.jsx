@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo } from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, Link } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import axios from 'axios'
 import MapView from './components/MapView'
 import AnalyticsPage from './components/AnalyticsPage'
 import AuthPage from './components/AuthPage'
 import LandingPage from './components/LandingPage'
-import { MapPin, BarChart3, LogOut, User } from 'lucide-react'
+import ProfilePage from './components/ProfilePage'
+import Dock from './components/Dock'
+import { Home, Map, BarChart3, User } from 'lucide-react'
 import './App.css'
 
 // Protected Route Component
@@ -13,64 +15,43 @@ function ProtectedRoute({ children, isAuthenticated }) {
   return isAuthenticated ? children : <Navigate to="/auth" replace />
 }
 
-// Header Component with User Info
-function Header({ user, onLogout }) {
+// Navigation Dock Component
+function NavigationDock({ onLogout }) {
   const navigate = useNavigate()
+  const location = useLocation()
   
-  if (!user) return null
-  
+  const items = [
+    { 
+      icon: <Home size={18} />, 
+      label: 'Home', 
+      onClick: () => navigate('/map') 
+    },
+    { 
+      icon: <Map className='text-white' size={18} />, 
+      label: 'Map', 
+      onClick: () => navigate('/map') 
+    },
+    { 
+      icon: <BarChart3 size={18} />, 
+      label: 'Analytics', 
+      onClick: () => navigate('/analytics') 
+    },
+    { 
+      icon: <User size={18} />, 
+      label: 'Profile', 
+      onClick: () => navigate('/profile') 
+    },
+  ]
+
   return (
-    <header className="bg-white shadow-md sticky top-0 z-1000 border-b border-gray-200">
-      <div className="max-w-screen-2xl mx-auto px-6 py-4">
-        <div className="flex justify-between items-center">
-          {/* Logo Section */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#667eea" }}>
-              
-            </div>
-            <h1 className="text-2xl font-bold text-black uppercase">
-              CrimePulse
-            </h1>
-          </div>
-
-          {/* Navigation Links */}
-          <nav className="hidden md:flex items-center gap-1">
-            <Link
-              to="/map"
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-all duration-200 font-medium text-sm"
-            >
-              <MapPin className="w-4 h-4" />
-              Map View
-            </Link>
-            <Link
-              to="/analytics"
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-all duration-200 font-medium text-sm"
-            >
-              <BarChart3 className="w-4 h-4" />
-              Analytics
-            </Link>
-          </nav>
-
-          {/* User Section */}
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">
-              <User className="w-4 h-4 text-gray-600" />
-              <span className="text-sm font-medium text-gray-700">
-                {user.name || user.email}
-              </span>
-            </div>
-            <button
-              onClick={onLogout}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium text-sm transition-all duration-300 hover:opacity-90 hover:shadow-lg active:scale-95"
-              style={{ backgroundColor: "#667eea" }}
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">Logout</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </header>
+    <div className="dock-container">
+      <Dock 
+        items={items}
+        panelHeight={60}
+        baseItemSize={50}
+        magnification={70}
+      />
+    </div>
   )
 }
 
@@ -253,7 +234,6 @@ function App() {
 
   return (
     <Router>
-      {isAuthenticated && <Header user={user} onLogout={handleLogout} />}
       <Routes>
         <Route 
           path="/" 
@@ -308,7 +288,19 @@ function App() {
             </ProtectedRoute>
           } 
         />
+        <Route 
+          path="/profile" 
+          element={
+            <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProfilePage 
+                user={user}
+                onLogout={handleLogout}
+              />
+            </ProtectedRoute>
+          } 
+        />
       </Routes>
+      {isAuthenticated && <NavigationDock onLogout={handleLogout} />}
     </Router>
   )
 }
