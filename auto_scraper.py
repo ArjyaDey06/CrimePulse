@@ -37,12 +37,14 @@ class AutoCrimeScraper:
         print(f"✅ Connected to MongoDB. Current records: {self.collection.count_documents({})}")
     
     def scrape_times_of_india_rss(self):
-        """Scrape Times of India Mumbai RSS feed"""
+        """Scrape Times of India India-wide RSS feed"""
         print("\n📡 Fetching Times of India RSS...")
         
         rss_urls = [
+            'https://timesofindia.indiatimes.com/rssfeeds/-2128838597.cms',  # India News
             'https://timesofindia.indiatimes.com/rssfeeds/1081479906.cms',  # Mumbai News
-            'https://timesofindia.indiatimes.com/rssfeeds/-2128838597.cms'  # India News
+            'https://timesofindia.indiatimes.com/rssfeeds/2647163.cms',     # Delhi News
+            'https://timesofindia.indiatimes.com/rssfeeds/1898055.cms'      # Bangalore News
         ]
         
         new_articles = []
@@ -61,14 +63,13 @@ class AutoCrimeScraper:
                                      'crime', 'arrested', 'police', 'killed', 'attack', 'molest']
                     
                     if any(keyword in title.lower() for keyword in crime_keywords):
-                        # Check for Mumbai
-                        if 'mumbai' in title.lower() or 'mumbai' in url.lower():
-                            new_articles.append({
-                                'title': title,
-                                'url': url,
-                                'source': 'Times of India',
-                                'published': entry.get('published', '')
-                            })
+                        # Add all India crime news (removed Mumbai filter)
+                        new_articles.append({
+                            'title': title,
+                            'url': url,
+                            'source': 'Times of India',
+                            'published': entry.get('published', '')
+                        })
             except Exception as e:
                 print(f"  ❌ Error fetching RSS: {e}")
         
@@ -76,32 +77,38 @@ class AutoCrimeScraper:
         return new_articles
     
     def scrape_hindustan_times_rss(self):
-        """Scrape Hindustan Times Mumbai RSS"""
+        """Scrape Hindustan Times India RSS"""
         print("\n📡 Fetching Hindustan Times RSS...")
         
-        rss_url = 'https://www.hindustantimes.com/feeds/rss/mumbai-news/rssfeed.xml'
+        rss_urls = [
+            'https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml',
+            'https://www.hindustantimes.com/feeds/rss/mumbai-news/rssfeed.xml',
+            'https://www.hindustantimes.com/feeds/rss/delhi-news/rssfeed.xml'
+        ]
+        
         new_articles = []
         
-        try:
-            feed = feedparser.parse(rss_url)
-            print(f"  Found {len(feed.entries)} articles in feed")
-            
-            for entry in feed.entries[:20]:
-                title = entry.get('title', '')
-                url = entry.get('link', '')
+        for rss_url in rss_urls:
+            try:
+                feed = feedparser.parse(rss_url)
+                print(f"  Found {len(feed.entries)} articles in feed")
                 
-                crime_keywords = ['murder', 'rape', 'theft', 'robbery', 'assault', 'kidnap', 
-                                 'crime', 'arrested', 'police', 'killed', 'attack']
-                
-                if any(keyword in title.lower() for keyword in crime_keywords):
-                    new_articles.append({
-                        'title': title,
-                        'url': url,
-                        'source': 'Hindustan Times',
-                        'published': entry.get('published', '')
-                    })
-        except Exception as e:
-            print(f"  ❌ Error fetching RSS: {e}")
+                for entry in feed.entries[:20]:
+                    title = entry.get('title', '')
+                    url = entry.get('link', '')
+                    
+                    crime_keywords = ['murder', 'rape', 'theft', 'robbery', 'assault', 'kidnap', 
+                                     'crime', 'arrested', 'police', 'killed', 'attack']
+                    
+                    if any(keyword in title.lower() for keyword in crime_keywords):
+                        new_articles.append({
+                            'title': title,
+                            'url': url,
+                            'source': 'Hindustan Times',
+                            'published': entry.get('published', '')
+                        })
+            except Exception as e:
+                print(f"  ❌ Error fetching RSS: {e}")
         
         print(f"  ✅ Found {len(new_articles)} crime-related articles")
         return new_articles
@@ -136,37 +143,96 @@ class AutoCrimeScraper:
         return severity_map.get(crime_type, 'Low')
     
     def extract_location(self, text):
-        """Extract Mumbai location from text"""
-        mumbai_areas = [
+        """Extract location from text - covers major Indian cities"""
+        # Major Indian cities and their notable areas
+        indian_locations = [
+            # Mumbai areas
             'Andheri', 'Bandra', 'Borivali', 'Churchgate', 'Colaba', 'Dadar', 'Goregaon',
             'Juhu', 'Kandivali', 'Kurla', 'Malad', 'Mulund', 'Powai', 'Santacruz',
-            'Vile Parle', 'Worli', 'Ghatkopar', 'Vikhroli', 'Bhandup', 'Chembur'
+            'Vile Parle', 'Worli', 'Ghatkopar', 'Vikhroli', 'Bhandup', 'Chembur',
+            # Major cities
+            'Mumbai', 'Delhi', 'Bangalore', 'Bengaluru', 'Chennai', 'Kolkata', 'Hyderabad',
+            'Pune', 'Ahmedabad', 'Surat', 'Jaipur', 'Lucknow', 'Kanpur', 'Nagpur',
+            'Indore', 'Thane', 'Bhopal', 'Visakhapatnam', 'Patna', 'Vadodara',
+            'Ghaziabad', 'Ludhiana', 'Agra', 'Nashik', 'Faridabad', 'Meerut',
+            'Rajkot', 'Kalyan', 'Vasai', 'Varanasi', 'Srinagar', 'Aurangabad',
+            'Dhanbad', 'Amritsar', 'Navi Mumbai', 'Allahabad', 'Ranchi', 'Howrah',
+            'Coimbatore', 'Jabalpur', 'Gwalior', 'Vijayawada', 'Jodhpur', 'Madurai',
+            'Raipur', 'Kota', 'Chandigarh', 'Guwahati', 'Noida', 'Gurugram', 'Gurgaon'
         ]
         
         text_lower = text.lower()
-        for area in mumbai_areas:
-            if area.lower() in text_lower:
-                return area
-        return "Mumbai"
+        for location in indian_locations:
+            if location.lower() in text_lower:
+                return location
+        return "India"  # Default if no specific location found
     
     def get_coordinates(self, location):
-        """Get approximate coordinates for Mumbai areas"""
-        # Hardcoded coordinates for common Mumbai areas (faster than geocoding)
+        """Get approximate coordinates for Indian cities and areas"""
+        # Hardcoded coordinates for Indian cities and areas (faster than geocoding)
         coords_map = {
+            # Mumbai and areas
+            'Mumbai': (19.0760, 72.8777),
             'Andheri': (19.1136, 72.8697),
             'Bandra': (19.0596, 72.8295),
             'Borivali': (19.2403, 72.8565),
             'Colaba': (18.9067, 72.8147),
             'Dadar': (19.0178, 72.8478),
-            'Mumbai': (19.0760, 72.8777),
             'Kurla': (19.0728, 72.8826),
             'Malad': (19.1864, 72.8493),
             'Worli': (19.0183, 72.8169),
             'Ghatkopar': (19.0864, 72.9081),
-            'Powai': (19.1176, 72.9060)
+            'Powai': (19.1176, 72.9060),
+            'Navi Mumbai': (19.0330, 73.0297),
+            'Thane': (19.2183, 72.9781),
+            # Major cities
+            'Delhi': (28.7041, 77.1025),
+            'Bangalore': (12.9716, 77.5946),
+            'Bengaluru': (12.9716, 77.5946),
+            'Chennai': (13.0827, 80.2707),
+            'Kolkata': (22.5726, 88.3639),
+            'Hyderabad': (17.3850, 78.4867),
+            'Pune': (18.5204, 73.8567),
+            'Ahmedabad': (23.0225, 72.5714),
+            'Surat': (21.1702, 72.8311),
+            'Jaipur': (26.9124, 75.7873),
+            'Lucknow': (26.8467, 80.9462),
+            'Kanpur': (26.4499, 80.3319),
+            'Nagpur': (21.1458, 79.0882),
+            'Indore': (22.7196, 75.8577),
+            'Bhopal': (23.2599, 77.4126),
+            'Visakhapatnam': (17.6868, 83.2185),
+            'Patna': (25.5941, 85.1376),
+            'Vadodara': (22.3072, 73.1812),
+            'Ghaziabad': (28.6692, 77.4538),
+            'Ludhiana': (30.9010, 75.8573),
+            'Agra': (27.1767, 78.0081),
+            'Nashik': (19.9975, 73.7898),
+            'Faridabad': (28.4089, 77.3178),
+            'Meerut': (28.9845, 77.7064),
+            'Rajkot': (22.3039, 70.8022),
+            'Varanasi': (25.3176, 82.9739),
+            'Srinagar': (34.0837, 74.7973),
+            'Aurangabad': (19.8762, 75.3433),
+            'Amritsar': (31.6340, 74.8723),
+            'Allahabad': (25.4358, 81.8463),
+            'Ranchi': (23.3441, 85.3096),
+            'Howrah': (22.5958, 88.2636),
+            'Coimbatore': (11.0168, 76.9558),
+            'Vijayawada': (16.5062, 80.6480),
+            'Jodhpur': (26.2389, 73.0243),
+            'Madurai': (9.9252, 78.1198),
+            'Raipur': (21.2514, 81.6296),
+            'Kota': (25.2138, 75.8648),
+            'Chandigarh': (30.7333, 76.7794),
+            'Guwahati': (26.1445, 91.7362),
+            'Noida': (28.5355, 77.3910),
+            'Gurugram': (28.4595, 77.0266),
+            'Gurgaon': (28.4595, 77.0266),
+            'India': (20.5937, 78.9629)  # Center of India
         }
         
-        lat, lon = coords_map.get(location, coords_map['Mumbai'])
+        lat, lon = coords_map.get(location, coords_map['India'])
         return lat, lon
     
     def process_and_save_article(self, article):
